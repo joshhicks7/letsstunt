@@ -228,6 +228,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     paddingBottom: DISCOVER_CARD_OVERLAY_BOTTOM_PAD,
     paddingTop: SPACING.sm,
+    zIndex: 2,
     pointerEvents: 'box-none',
   },
   tapZones: {

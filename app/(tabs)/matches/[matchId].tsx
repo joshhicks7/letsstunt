@@ -45,6 +45,11 @@ export default function MatchChatScreen() {
     setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 80);
   }, [id, draft, sendMessage]);
 
+  const openTheirProfile = useCallback(() => {
+    if (!profile) return;
+    router.push({ pathname: '/discover/[id]', params: { id: profile.id } });
+  }, [profile]);
+
   if (!match || !profile) {
     return (
       <ThemedView style={[styles.centered, { paddingTop: insets.top }]}>
@@ -64,21 +69,28 @@ export default function MatchChatScreen() {
         <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={12}>
           <FontAwesome name="arrow-left" size={22} color={colors.text} />
         </Pressable>
-        {firstMedia?.uri && firstMedia.type === 'image' ? (
-          <Image source={{ uri: firstMedia.uri }} style={styles.headerAvatar} />
-        ) : (
-          <View style={[styles.headerAvatarPh, { backgroundColor: colors.tint + '22' }]}>
-            <FontAwesome name="user" size={18} color={colors.tint} />
+        <Pressable
+          style={styles.profileHeaderTap}
+          onPress={openTheirProfile}
+          accessibilityRole="link"
+          accessibilityLabel={`View ${profile.displayName}'s profile`}
+        >
+          {firstMedia?.uri && firstMedia.type === 'image' ? (
+            <Image source={{ uri: firstMedia.uri }} style={styles.headerAvatar} />
+          ) : (
+            <View style={[styles.headerAvatarPh, { backgroundColor: colors.tint + '22' }]}>
+              <FontAwesome name="user" size={18} color={colors.tint} />
+            </View>
+          )}
+          <View style={styles.headerTitles}>
+            <ThemedText style={styles.headerName} numberOfLines={1}>
+              {profile.displayName}
+            </ThemedText>
+            <ThemedText style={[styles.headerSub, { color: colors.secondary }]} numberOfLines={1}>
+              Matched — plan a stunt session
+            </ThemedText>
           </View>
-        )}
-        <View style={styles.headerTitles}>
-          <ThemedText style={styles.headerName} numberOfLines={1}>
-            {profile.displayName}
-          </ThemedText>
-          <ThemedText style={[styles.headerSub, { color: colors.secondary }]} numberOfLines={1}>
-            Matched — plan a stunt session
-          </ThemedText>
-        </View>
+        </Pressable>
         <Pressable
           onPress={() => setSafetyOpen(true)}
           style={styles.flagBtn}
@@ -191,6 +203,13 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
   },
   backBtn: { padding: SPACING.sm },
+  profileHeaderTap: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    minWidth: 0,
+    gap: SPACING.sm,
+  },
   headerAvatar: { width: 40, height: 40, borderRadius: 20 },
   headerAvatarPh: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   headerTitles: { flex: 1, minWidth: 0 },

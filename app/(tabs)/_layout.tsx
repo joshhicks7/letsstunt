@@ -1,17 +1,42 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { Tabs } from 'expo-router';
+import { Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Colors from '@/constants/Colors';
+import { FONT_SIZE, FONT_WEIGHT, SPACING } from '@/constants/Theme';
 import { useColorScheme } from '@/components/useColorScheme';
 
 export default function TabLayout() {
   const scheme = useColorScheme() ?? 'light';
   const colors = Colors[scheme];
+  const insets = useSafeAreaInsets();
+  const tabPadBottom = Math.max(insets.bottom, Platform.OS === 'web' ? SPACING.sm : SPACING.xs);
+  const tabPadTop = SPACING.sm;
+
   return (
     <Tabs
       screenOptions={{
         tabBarActiveTintColor: colors.tint,
         tabBarInactiveTintColor: colors.tabIconDefault,
-        tabBarStyle: { backgroundColor: colors.card, borderTopColor: colors.border },
+        tabBarStyle: {
+          backgroundColor: colors.card,
+          borderTopColor: colors.border,
+          paddingTop: tabPadTop,
+          paddingBottom: tabPadBottom,
+          minHeight: 52 + tabPadTop + tabPadBottom,
+        },
+        tabBarLabelStyle: {
+          fontSize: FONT_SIZE.xs - 1,
+          fontWeight: FONT_WEIGHT.semibold,
+          marginTop: 2,
+          marginBottom: 0,
+          lineHeight: Platform.OS === 'web' ? 16 : 14,
+          ...(Platform.OS === 'android' ? { includeFontPadding: false } : {}),
+        },
+        tabBarIconStyle: { marginBottom: 0 },
+        tabBarItemStyle: {
+          paddingHorizontal: Platform.OS === 'web' ? SPACING.xs : SPACING.sm,
+        },
         headerShown: false,
         lazy: false,
       }}
