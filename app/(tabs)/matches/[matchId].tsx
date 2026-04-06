@@ -19,6 +19,7 @@ import { SPACING, FONT_SIZE, FONT_WEIGHT, RADIUS } from '@/constants/Theme';
 import type { ChatMessage } from '@/types';
 import { useAuth } from '@/context/AuthContext';
 import { useSwipe } from '@/context/SwipeContext';
+import { goBackOrReplace } from '@/lib/goBackOrReplace';
 import { useColorScheme } from '@/components/useColorScheme';
 
 export default function MatchChatScreen() {
@@ -53,7 +54,7 @@ export default function MatchChatScreen() {
   if (!match || !profile) {
     return (
       <ThemedView style={[styles.centered, { paddingTop: insets.top }]}>
-        <Pressable onPress={() => router.back()} style={styles.backOnly}>
+        <Pressable onPress={() => goBackOrReplace('/(tabs)/matches')} style={styles.backOnly}>
           <FontAwesome name="arrow-left" size={22} color={colors.text} />
         </Pressable>
         <ThemedText style={{ color: colors.secondary }}>Conversation not found.</ThemedText>
@@ -66,7 +67,7 @@ export default function MatchChatScreen() {
   return (
     <ThemedView style={[styles.screen, { paddingTop: insets.top }]}>
       <View style={[styles.topBar, { borderBottomColor: colors.border }]}>
-        <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={12}>
+        <Pressable onPress={() => goBackOrReplace('/(tabs)/matches')} style={styles.backBtn} hitSlop={12}>
           <FontAwesome name="arrow-left" size={22} color={colors.text} />
         </Pressable>
         <Pressable
@@ -114,7 +115,7 @@ export default function MatchChatScreen() {
         onBlock={(pid) => {
           block(pid);
           setSafetyOpen(false);
-          router.back();
+          goBackOrReplace('/(tabs)/matches');
         }}
         showBlockOption
       />

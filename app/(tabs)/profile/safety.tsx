@@ -1,5 +1,4 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { router } from 'expo-router';
 import React from 'react';
 import { Linking, Pressable, ScrollView, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -8,6 +7,7 @@ import Colors from '@/constants/Colors';
 import { REPORT_EMAIL, SAFETY_TIPS } from '@/constants/safety';
 import { SPACING, FONT_SIZE, FONT_WEIGHT, RADIUS } from '@/constants/Theme';
 import { useColorScheme } from '@/components/useColorScheme';
+import { goBackOrReplace } from '@/lib/goBackOrReplace';
 
 export default function SafetyTipsScreen() {
   const colorScheme = useColorScheme();
@@ -16,7 +16,7 @@ export default function SafetyTipsScreen() {
 
   return (
     <ThemedView style={[styles.container, { paddingTop: insets.top }]}>
-      <Pressable onPress={() => router.back()} style={styles.back}>
+      <Pressable onPress={() => goBackOrReplace('/(tabs)/profile')} style={styles.back}>
         <FontAwesome name="arrow-left" size={22} color={colors.text} />
         <ThemedText style={[styles.backText, { color: colors.text }]}>Back</ThemedText>
       </Pressable>

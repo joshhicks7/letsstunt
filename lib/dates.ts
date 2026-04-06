@@ -22,9 +22,12 @@ export function ageFromISOBirthday(birthday: string): number | null {
   return age;
 }
 
-/** Default date for picker (18 years ago) */
-export function defaultBirthdayForPicker(): Date {
-  const d = new Date();
-  d.setFullYear(d.getFullYear() - 22);
-  return d;
+/** Local “right now” as a `Date` (picker default, etc.). */
+export function todayDate(): Date {
+  return new Date();
+}
+
+/** Today’s calendar date as ISO `YYYY-MM-DD`. */
+export function todayISODate(): string {
+  return toISODateString(todayDate());
 }

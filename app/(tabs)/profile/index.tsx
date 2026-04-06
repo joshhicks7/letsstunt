@@ -11,19 +11,15 @@ import {
   profileSectionStyles as ps,
 } from '@/components/ProfileSections';
 import { Text as ThemedText, View as ThemedView } from '@/components/Themed';
-import { AVAILABILITY_LABELS } from '@/constants/availability';
 import Colors from '@/constants/Colors';
 import { POSITION_LABELS } from '@/constants/positions';
 import { SKILL_LEVEL_LABELS } from '@/constants/skills';
 import { SKILL_TAG_LABELS } from '@/constants/skillTags';
 import { ProfileCoverCarousel } from '@/components/ProfileCoverCarousel';
-import { SPACING, FONT_SIZE, FONT_WEIGHT } from '@/constants/Theme';
+import { SPACING, FONT_SIZE, FONT_WEIGHT, PROFILE_COVER_CAROUSEL_HEIGHT } from '@/constants/Theme';
 import { useAuth } from '@/context/AuthContext';
 import { useColorScheme } from '@/components/useColorScheme';
 import { ageFromISOBirthday } from '@/lib/dates';
-
-/** Same horizontal inset as `SectionBlock` — paging width must match card inner width */
-const PROFILE_COVER_HEIGHT = 180;
 
 export default function ProfileScreen() {
   const { user } = useAuth();
@@ -62,9 +58,20 @@ export default function ProfileScreen() {
     <ThemedView style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.topBar}>
         <ThemedText style={styles.screenTitle}>Profile</ThemedText>
-        <Pressable onPress={() => router.push('/profile/settings')} hitSlop={12} accessibilityLabel="Settings" style={styles.settingsHit}>
-          <FontAwesome name="cog" size={22} color={colors.tint} />
-        </Pressable>
+        <View style={styles.topBarActions}>
+          <Pressable
+            onPress={() => router.push('/profile/edit')}
+            hitSlop={12}
+            accessibilityLabel="Edit profile"
+            accessibilityRole="button"
+            style={styles.topBarIconHit}
+          >
+            <FontAwesome name="pencil" size={20} color={colors.tint} />
+          </Pressable>
+          <Pressable onPress={() => router.push('/profile/settings')} hitSlop={12} accessibilityLabel="Settings" style={styles.topBarIconHit}>
+            <FontAwesome name="cog" size={22} color={colors.tint} />
+          </Pressable>
+        </View>
       </View>
 
       <View style={[styles.headerRule, { backgroundColor: border }]} />
@@ -80,17 +87,17 @@ export default function ProfileScreen() {
             imageMedia={imageMedia}
             carouselWidth={coverCarouselWidth}
             colors={colors}
-            height={PROFILE_COVER_HEIGHT}
-            placeholderIconSize={52}
+            height={PROFILE_COVER_CAROUSEL_HEIGHT}
+            placeholderIconSize={64}
           />
-          <View style={ps.blockBody}>
-            <ThemedText style={ps.heroName}>{profile.displayName}</ThemedText>
+          <View style={ps.profileHeroBlockBody}>
+            <ThemedText style={[ps.profileHeroName, { color: colors.text }]}>{profile.displayName}</ThemedText>
             {age != null ? (
-              <ThemedText style={[ps.heroMeta, { color: colors.secondary }]}>{age} years old</ThemedText>
+              <ThemedText style={[ps.profileHeroMeta, { color: colors.secondary }]}>{age} years old</ThemedText>
             ) : null}
             {profile.location?.city ? (
-              <ThemedText style={[ps.heroMeta, { color: colors.secondary }]}>
-                <FontAwesome name="map-marker" size={13} color={colors.secondary} /> {profile.location.city}
+              <ThemedText style={[ps.profileHeroMeta, { color: colors.secondary }]}>
+                <FontAwesome name="map-marker" size={11} color={colors.secondary} /> {profile.location.city}
                 {profile.location.region ? `, ${profile.location.region}` : ''}
               </ThemedText>
             ) : null}
@@ -164,17 +171,6 @@ export default function ProfileScreen() {
           })()}
         </SectionBlock>
 
-        {profile.availability.length > 0 ? (
-          <SectionBlock colors={colors} isDark={isDark}>
-            <BlockHeading colors={colors}>Availability</BlockHeading>
-            <View style={ps.blockBody}>
-              <ThemedText style={[ps.bodyText, { color: colors.text }]}>
-                {profile.availability.map((a) => AVAILABILITY_LABELS[a]).join(' · ')}
-              </ThemedText>
-            </View>
-          </SectionBlock>
-        ) : null}
-
         {profile.teamGym || ig ? (
           <SectionBlock colors={colors} isDark={isDark}>
             <BlockHeading colors={colors}>Team & social</BlockHeading>
@@ -205,6 +201,7 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.sm,
   },
   screenTitle: { fontSize: FONT_SIZE.xl, fontWeight: FONT_WEIGHT.bold },
-  settingsHit: { padding: SPACING.sm, marginRight: -SPACING.sm },
+  topBarActions: { flexDirection: 'row', alignItems: 'center', gap: SPACING.xs },
+  topBarIconHit: { padding: SPACING.sm, marginRight: -SPACING.sm },
   scroll: { paddingBottom: SPACING.xl },
 });

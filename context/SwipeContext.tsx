@@ -13,6 +13,9 @@ interface SwipeContextValue {
   passedIds: Set<string>;
   blockedIds: Set<string>;
   matches: Match[];
+  /** New matches since you last opened the Matches tab — drives tab badge */
+  unseenMatchCount: number;
+  clearUnseenMatches: () => void;
   getMatchProfile: (match: Match) => StunterProfile | undefined;
   like: (entityId: string) => void;
   pass: (entityId: string) => void;
@@ -43,6 +46,11 @@ export function SwipeProvider({ children }: { children: React.ReactNode }) {
   const [blockedIds, setBlockedIds] = useState<Set<string>>(() => new Set());
   const [matches, setMatches] = useState<Match[]>(() => [...MOCK_MATCHES]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [unseenMatchCount, setUnseenMatchCount] = useState(0);
+
+  const clearUnseenMatches = useCallback(() => {
+    setUnseenMatchCount(0);
+  }, []);
 
   const allProfiles = useMemo(() => {
     const list = [...MOCK_PROFILES];
@@ -81,7 +89,9 @@ export function SwipeProvider({ children }: { children: React.ReactNode }) {
 
   const like = useCallback(
     (entityId: string) => {
+      if (!currentUserId) return;
       setLikedIds((prev) => new Set(prev).add(entityId));
+      let addedNew = false;
       setMatches((prev) => {
         const exists = prev.some(
           (m) =>
@@ -89,15 +99,17 @@ export function SwipeProvider({ children }: { children: React.ReactNode }) {
             (m.profileIds[1] === currentUserId && m.profileIds[0] === entityId)
         );
         if (exists) return prev;
+        addedNew = true;
         return [
           ...prev,
           {
             id: id('match'),
-            profileIds: [currentUserId!, entityId],
+            profileIds: [currentUserId, entityId],
             matchedAt: now(),
           },
         ];
       });
+      if (addedNew) setUnseenMatchCount((n) => n + 1);
     },
     [currentUserId]
   );
@@ -162,6 +174,8 @@ export function SwipeProvider({ children }: { children: React.ReactNode }) {
       passedIds,
       blockedIds,
       matches: matchesFiltered,
+      unseenMatchCount,
+      clearUnseenMatches,
       getMatchProfile,
       like,
       pass,
@@ -178,6 +192,8 @@ export function SwipeProvider({ children }: { children: React.ReactNode }) {
       passedIds,
       blockedIds,
       matchesFiltered,
+      unseenMatchCount,
+      clearUnseenMatches,
       getMatchProfile,
       like,
       pass,

@@ -1,7 +1,9 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { router } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import * as ImagePicker from 'expo-image-picker';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -12,20 +14,25 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BirthdayPickerField } from '@/components/BirthdayPickerField';
+import { LocationSearchField } from '@/components/LocationSearchField';
 import { BlockHeading, ProfileHairline, SectionBlock, profileSectionStyles as ps } from '@/components/ProfileSections';
 import { Text as ThemedText, View as ThemedView } from '@/components/Themed';
-import { AVAILABILITY_OPTIONS } from '@/constants/availability';
 import Colors from '@/constants/Colors';
-import { mergePrimaryAndSecondary, POSITION_OPTIONS, PRIMARY_ROLE_OPTIONS } from '@/constants/positions';
+import { mergePrimaryAndSecondary, ROLE_SECTIONS } from '@/constants/positions';
 import { SKILL_LEVEL_OPTIONS } from '@/constants/skills';
-import { SKILL_TAG_OPTIONS } from '@/constants/skillTags';
+import { SKILL_TAG_LABELS, SKILL_TAG_SECTIONS } from '@/constants/skillTags';
 import { MIN_AGE, UNDERAGE_MESSAGE } from '@/constants/safety';
 import { SPACING, FONT_SIZE, FONT_WEIGHT, RADIUS } from '@/constants/Theme';
-import type { AvailabilityType, PositionType, SkillTag, StunterProfile } from '@/types';
+import type { PositionType, SkillTag, StunterProfile } from '@/types';
 import { useAuth } from '@/context/AuthContext';
 import { useColorScheme } from '@/components/useColorScheme';
+import { goBackOrReplace } from '@/lib/goBackOrReplace';
 import { useLocation } from '@/hooks/useLocation';
-import { ageFromISOBirthday } from '@/lib/dates';
+import { ageFromISOBirthday, todayISODate } from '@/lib/dates';
+import { locationFromAreaText } from '@/lib/locationDraft';
+import { id as newMediaId } from '@/data/mockData';
+
+const MAX_PROFILE_MEDIA = 6;
 
 function FieldLabel({ children, colors }: { children: string; colors: (typeof Colors)['light'] }) {
   return <ThemedText style={[ps.rowLabel, { color: colors.secondary }]}>{children}</ThemedText>;
@@ -69,38 +76,40 @@ export default function ProfileEditScreen() {
   const colors = Colors[colorScheme ?? 'light'];
   const isDark = colorScheme === 'dark';
   const insets = useSafeAreaInsets();
-  const { city, lat, lng, refetch: refetchLocation } = useLocation();
+  const { city, lat, lng, refetch: refetchLocation, openAppSettings } = useLocation();
   const profile = user?.profile;
 
   const [displayName, setDisplayName] = useState(profile?.displayName ?? '');
-  const [birthday, setBirthday] = useState(profile?.birthday ?? '');
+  const [birthday, setBirthday] = useState(() =>
+    profile?.birthday?.trim() ? profile.birthday : todayISODate(),
+  );
   const [primaryRole, setPrimaryRole] = useState<PositionType | null>(profile?.primaryRole ?? null);
   const [secondaryRoles, setSecondaryRoles] = useState<PositionType[]>(profile?.secondaryRoles ?? []);
   const [skillLevel, setSkillLevel] = useState(profile?.skillLevel ?? 'beginner');
   const [yearsExperience, setYearsExperience] = useState(profile?.yearsExperience ?? 0);
-  const [availability, setAvailability] = useState<AvailabilityType[]>(profile?.availability ?? []);
   const [skillTags, setSkillTags] = useState<SkillTag[]>(profile?.skillTags ?? []);
   const [currentlyWorkingOn, setCurrentlyWorkingOn] = useState(profile?.currentlyWorkingOn ?? '');
   const [instagramHandle, setInstagramHandle] = useState(profile?.instagramHandle ?? '');
   const [location, setLocation] = useState<StunterProfile['location']>(profile?.location ?? null);
   const [teamGym, setTeamGym] = useState(profile?.teamGym ?? '');
   const [bio, setBio] = useState(profile?.bio ?? '');
+  const [media, setMedia] = useState<StunterProfile['media']>(profile?.media ?? []);
 
   useEffect(() => {
     if (profile) {
       setDisplayName(profile.displayName);
-      setBirthday(profile.birthday);
+      setBirthday(profile.birthday?.trim() ? profile.birthday : todayISODate());
       setPrimaryRole(profile.primaryRole);
       setSecondaryRoles(profile.secondaryRoles);
       setSkillLevel(profile.skillLevel);
       setYearsExperience(profile.yearsExperience);
-      setAvailability(profile.availability);
       setSkillTags(profile.skillTags);
       setCurrentlyWorkingOn(profile.currentlyWorkingOn);
       setInstagramHandle(profile.instagramHandle ?? '');
       setLocation(profile.location);
       setTeamGym(profile.teamGym ?? '');
       setBio(profile.bio);
+      setMedia(profile.media);
     }
   }, [profile?.id]);
 
@@ -126,13 +135,74 @@ export default function ProfileEditScreen() {
     setSecondaryRoles((prev) => (prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]));
   };
 
-  const toggleAvailability = (a: AvailabilityType) => {
-    setAvailability((prev) => (prev.includes(a) ? prev.filter((x) => x !== a) : [...prev, a]));
-  };
-
   const toggleSkillTag = (t: SkillTag) => {
     setSkillTags((prev) => (prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]));
   };
+
+  const locationDisplay = useMemo(() => {
+    const { city: c, region: r } = location ?? {};
+    if (!c && !r) return '';
+    return [c, r].filter(Boolean).join(', ');
+  }, [location]);
+
+  const onLocationTextChange = useCallback((text: string) => {
+    setLocation((prev) => locationFromAreaText(text.trim(), prev));
+  }, []);
+
+  const fillLocationFromDevice = useCallback(async () => {
+    const snap = await refetchLocation();
+    if (snap) {
+      setLocation({
+        country: 'USA',
+        lat: snap.lat,
+        lng: snap.lng,
+        city: snap.city ?? undefined,
+        region: snap.region ?? undefined,
+      });
+      return;
+    }
+    if (Platform.OS === 'web') {
+      Alert.alert(
+        'Location',
+        'If the browser blocked location, allow Location for this site in the address bar, then try the pin again.',
+      );
+    } else {
+      Alert.alert('Location', 'Allow location when prompted, or enable it in Settings, then try again.', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Open settings', onPress: () => void openAppSettings() },
+      ]);
+    }
+  }, [refetchLocation, openAppSettings]);
+
+  const addGalleryItem = useCallback(async () => {
+    if (media.length >= MAX_PROFILE_MEDIA) return;
+    const { granted } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!granted) return;
+    const r = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.All,
+      quality: 0.85,
+    });
+    if (r.canceled || !r.assets[0]) return;
+    const a = r.assets[0];
+    const type = a.type === 'video' ? ('video' as const) : ('image' as const);
+    setMedia((prev) =>
+      [...prev, { id: newMediaId('m'), uri: a.uri, type }].slice(0, MAX_PROFILE_MEDIA),
+    );
+  }, [media.length]);
+
+  const removeMediaAt = useCallback((index: number) => {
+    setMedia((prev) => prev.filter((_, i) => i !== index));
+  }, []);
+
+  const confirmRemoveMedia = useCallback(
+    (index: number) => {
+      Alert.alert('Remove media', 'Remove this photo or video from your profile?', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Remove', style: 'destructive', onPress: () => removeMediaAt(index) },
+      ]);
+    },
+    [removeMediaAt],
+  );
 
   const age = birthday ? ageFromISOBirthday(birthday) : null;
   const ageError = birthday.length > 0 && age != null && age < MIN_AGE ? UNDERAGE_MESSAGE : null;
@@ -148,15 +218,15 @@ export default function ProfileEditScreen() {
       positions,
       skillLevel,
       yearsExperience,
-      availability,
       skillTags,
       currentlyWorkingOn: currentlyWorkingOn.trim(),
       instagramHandle: instagramHandle.replace(/^@/, '').trim() || null,
       location: location ?? (city || lat != null ? { city: city ?? undefined, country: 'USA', lat: lat ?? undefined, lng: lng ?? undefined } : null),
       teamGym: teamGym.trim() || null,
       bio: bio.trim(),
+      media,
     });
-    router.back();
+    goBackOrReplace('/(tabs)/profile');
   };
 
   const canSave = displayName.trim().length > 0 && primaryRole != null && age != null && age >= MIN_AGE;
@@ -178,7 +248,7 @@ export default function ProfileEditScreen() {
   return (
     <ThemedView style={[styles.container, { paddingTop: insets.top, backgroundColor: colors.background }]}>
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={12}>
+        <Pressable onPress={() => goBackOrReplace('/(tabs)/profile')} style={styles.backBtn} hitSlop={12}>
           <FontAwesome name="arrow-left" size={22} color={colors.text} />
         </Pressable>
         <ThemedText style={[styles.headerTitle, { color: colors.text }]}>Edit profile</ThemedText>
@@ -211,50 +281,142 @@ export default function ProfileEditScreen() {
               <ProfileHairline color={border} />
               <View style={styles.fieldGap}>
                 <FieldLabel colors={colors}>Birthday</FieldLabel>
-                <BirthdayPickerField value={birthday} onChange={setBirthday} hasError={!!ageError} plain />
+                <BirthdayPickerField
+                  value={birthday}
+                  onChange={setBirthday}
+                  hasError={!!ageError}
+                  plain
+                  emptyLabel="Tap to choose"
+                  hideLabel
+                />
               </View>
               {ageError ? (
                 <ThemedText style={[styles.error, { color: '#c62828' }]}>{ageError}</ThemedText>
               ) : null}
+              <ProfileHairline color={border} />
+              <View style={styles.fieldGap}>
+                <FieldLabel colors={colors}>Bio</FieldLabel>
+                <TextInput
+                  style={[styles.inputPlain, styles.bioMultiline, inlineInput]}
+                  placeholder="Short intro — what you’re looking for"
+                  placeholderTextColor={colors.secondary}
+                  value={bio}
+                  onChangeText={setBio}
+                  multiline
+                />
+              </View>
             </View>
           </SectionBlock>
 
           <SectionBlock colors={colors} isDark={isDark}>
-            <BlockHeading colors={colors}>Roles</BlockHeading>
+            <BlockHeading colors={colors}>Photos & videos</BlockHeading>
             <View style={styles.sectionPad}>
-              <FieldLabel colors={colors}>Primary</FieldLabel>
-              <View style={styles.chipWrap}>
-                {PRIMARY_ROLE_OPTIONS.map(({ value, label }) => (
-                  <SelectChip
-                    key={value}
-                    label={label}
-                    selected={primaryRole === value}
-                    onPress={() => setPrimary(value)}
-                    colors={colors}
-                    isDark={isDark}
-                  />
+              <ThemedText style={[styles.mediaHint, { color: colors.secondary }]}>
+                Up to {MAX_PROFILE_MEDIA} — tap + to add, × to remove.
+              </ThemedText>
+              <View style={styles.mediaGrid}>
+                {[
+                  [0, 1, 2],
+                  [3, 4, 5],
+                ].map((indices, rowIdx) => (
+                  <View
+                    key={`row-${rowIdx}`}
+                    style={[styles.mediaGridRow, rowIdx === 0 ? { marginBottom: SPACING.sm } : null]}
+                  >
+                    {indices.map((i) => {
+                      const item = media[i];
+                      const showAdd = !item && i === media.length && media.length < MAX_PROFILE_MEDIA;
+                      return (
+                        <View key={item?.id ?? `slot-${i}`} style={styles.mediaGridCell}>
+                          {item ? (
+                            <View style={styles.mediaCellInner}>
+                              {item.type === 'image' ? (
+                                <Image source={{ uri: item.uri }} style={styles.mediaThumb} accessibilityLabel="Profile media" />
+                              ) : (
+                                <View style={[styles.mediaVideoPlaceholder, { backgroundColor: colors.card }]}>
+                                  <FontAwesome name="play-circle" size={32} color={colors.tint} />
+                                  <ThemedText style={[styles.mediaVideoLabel, { color: colors.secondary }]}>Video</ThemedText>
+                                </View>
+                              )}
+                              <Pressable
+                                style={styles.mediaRemoveBtn}
+                                onPress={() => confirmRemoveMedia(i)}
+                                hitSlop={8}
+                                accessibilityLabel="Remove media"
+                              >
+                                <FontAwesome name="times" size={16} color="#fff" />
+                              </Pressable>
+                            </View>
+                          ) : showAdd ? (
+                            <Pressable
+                              onPress={addGalleryItem}
+                              style={[styles.mediaAddCell, { borderColor: colors.border, backgroundColor: colors.surfaceSubtle }]}
+                              accessibilityLabel="Add photo or video"
+                              accessibilityRole="button"
+                            >
+                              <FontAwesome name="plus" size={28} color={colors.tint} />
+                            </Pressable>
+                          ) : (
+                            <View style={[styles.mediaAddCell, styles.mediaCellDisabled, { borderColor: colors.border }]} />
+                          )}
+                        </View>
+                      );
+                    })}
+                  </View>
                 ))}
               </View>
-              <View style={styles.subsectionGap}>
-                <FieldLabel colors={colors}>Also stunt as</FieldLabel>
-                <View style={styles.chipWrap}>
-                  {POSITION_OPTIONS.filter((o) => o.value !== primaryRole).map(({ value, label }) => (
-                    <SelectChip
-                      key={value}
-                      label={label}
-                      selected={secondaryRoles.includes(value)}
-                      onPress={() => toggleSecondary(value)}
-                      colors={colors}
-                      isDark={isDark}
-                    />
+            </View>
+          </SectionBlock>
+
+          <View style={styles.rolesSectionOuter}>
+            <SectionBlock colors={colors} isDark={isDark}>
+              <BlockHeading colors={colors}>Roles</BlockHeading>
+              <View style={[styles.sectionPad, styles.rolesSectionPad]}>
+                <FieldLabel colors={colors}>Primary</FieldLabel>
+                {ROLE_SECTIONS.map((section) => (
+                  <View key={`primary-${section.title}`} style={styles.roleSubsection}>
+                    <ThemedText style={[styles.roleSectionMeta, { color: colors.secondary }]}>{section.title}</ThemedText>
+                    <View style={styles.chipWrap}>
+                      {section.positions.map(({ value, label }) => (
+                        <SelectChip
+                          key={value}
+                          label={label}
+                          selected={primaryRole === value}
+                          onPress={() => setPrimary(value)}
+                          colors={colors}
+                          isDark={isDark}
+                        />
+                      ))}
+                    </View>
+                  </View>
+                ))}
+                <View style={styles.secondaryRolesWrap}>
+                  <FieldLabel colors={colors}>Also stunt as</FieldLabel>
+                  {ROLE_SECTIONS.map((section) => (
+                    <View key={`secondary-${section.title}`} style={styles.roleSubsection}>
+                      <ThemedText style={[styles.roleSectionMeta, { color: colors.secondary }]}>{section.title}</ThemedText>
+                      <View style={styles.chipWrap}>
+                        {section.positions
+                          .filter((p) => p.value !== primaryRole)
+                          .map(({ value, label }) => (
+                            <SelectChip
+                              key={value}
+                              label={label}
+                              selected={secondaryRoles.includes(value)}
+                              onPress={() => toggleSecondary(value)}
+                              colors={colors}
+                              isDark={isDark}
+                            />
+                          ))}
+                      </View>
+                    </View>
                   ))}
                 </View>
               </View>
-            </View>
-          </SectionBlock>
+            </SectionBlock>
+          </View>
 
           <SectionBlock colors={colors} isDark={isDark}>
-            <BlockHeading colors={colors}>Experience</BlockHeading>
             <View style={styles.sectionPad}>
               <FieldLabel colors={colors}>Skill level</FieldLabel>
               <View style={styles.chipWrap}>
@@ -281,20 +443,25 @@ export default function ProfileEditScreen() {
                 />
                 <ProfileHairline color={border} />
               </View>
-              <View style={styles.subsectionGap}>
+              <View style={[styles.subsectionGap, styles.skillTagsSection]}>
                 <FieldLabel colors={colors}>Skill tags</FieldLabel>
-                <View style={styles.chipWrap}>
-                  {SKILL_TAG_OPTIONS.map(({ value, label }) => (
-                    <SelectChip
-                      key={value}
-                      label={label}
-                      selected={skillTags.includes(value)}
-                      onPress={() => toggleSkillTag(value)}
-                      colors={colors}
-                      isDark={isDark}
-                    />
-                  ))}
-                </View>
+                {SKILL_TAG_SECTIONS.map((section) => (
+                  <View key={section.title} style={styles.skillTagSubsection}>
+                    <ThemedText style={[styles.roleSectionMeta, { color: colors.secondary }]}>{section.title}</ThemedText>
+                    <View style={styles.chipWrap}>
+                      {section.tags.map((value) => (
+                        <SelectChip
+                          key={value}
+                          label={SKILL_TAG_LABELS[value]}
+                          selected={skillTags.includes(value)}
+                          onPress={() => toggleSkillTag(value)}
+                          colors={colors}
+                          isDark={isDark}
+                        />
+                      ))}
+                    </View>
+                  </View>
+                ))}
               </View>
               <View style={styles.subsectionGap}>
                 <FieldLabel colors={colors}>Currently working on</FieldLabel>
@@ -311,34 +478,19 @@ export default function ProfileEditScreen() {
           </SectionBlock>
 
           <SectionBlock colors={colors} isDark={isDark}>
-            <BlockHeading colors={colors}>Availability</BlockHeading>
-            <View style={styles.sectionPad}>
-              <View style={styles.chipWrap}>
-                {AVAILABILITY_OPTIONS.map(({ value, label }) => (
-                  <SelectChip
-                    key={value}
-                    label={label}
-                    selected={availability.includes(value)}
-                    onPress={() => toggleAvailability(value)}
-                    colors={colors}
-                    isDark={isDark}
-                  />
-                ))}
-              </View>
-            </View>
-          </SectionBlock>
-
-          <SectionBlock colors={colors} isDark={isDark}>
             <BlockHeading colors={colors}>Location & links</BlockHeading>
             <View style={styles.sectionPad}>
               <FieldLabel colors={colors}>City / area</FieldLabel>
-              <Pressable onPress={refetchLocation} style={styles.locationPress} hitSlop={4}>
-                <FontAwesome name="map-marker" size={16} color={colors.tint} style={styles.locationIcon} />
-                <ThemedText style={[styles.locationText, { color: location?.city ?? city ? colors.text : colors.secondary }]}>
-                  {location?.city ?? city ?? 'Tap to refresh location'}
-                </ThemedText>
-                <FontAwesome name="refresh" size={14} color={colors.secondary} />
-              </Pressable>
+              <LocationSearchField
+                value={locationDisplay}
+                onChangeText={onLocationTextChange}
+                onSelectPlace={(loc) => setLocation(loc)}
+                onUseCurrentLocation={fillLocationFromDevice}
+                colors={colors}
+                variant="plain"
+                borderColor={border}
+                placeholder="Search or type city, e.g. Gainesville, FL"
+              />
               <ProfileHairline color={border} />
               <View style={styles.subsectionGap}>
                 <FieldLabel colors={colors}>Team / school / gym</FieldLabel>
@@ -362,20 +514,6 @@ export default function ProfileEditScreen() {
                   autoCapitalize="none"
                 />
               </View>
-            </View>
-          </SectionBlock>
-
-          <SectionBlock colors={colors} isDark={isDark}>
-            <BlockHeading colors={colors}>Bio</BlockHeading>
-            <View style={styles.sectionPad}>
-              <TextInput
-                style={[styles.inputPlain, styles.bioMultiline, inlineInput]}
-                placeholder="Short intro — what you’re looking for"
-                placeholderTextColor={colors.secondary}
-                value={bio}
-                onChangeText={setBio}
-                multiline
-              />
             </View>
           </SectionBlock>
 
@@ -431,6 +569,11 @@ const styles = StyleSheet.create({
   },
   fieldGap: { marginTop: SPACING.sm },
   subsectionGap: { marginTop: SPACING.lg },
+  rolesSectionOuter: { marginBottom: SPACING.xl },
+  rolesSectionPad: { paddingBottom: SPACING.lg },
+  secondaryRolesWrap: { marginTop: SPACING.xl },
+  skillTagsSection: { marginTop: SPACING.xxl },
+  skillTagSubsection: { marginTop: SPACING.lg },
   inputPlain: {
     fontSize: FONT_SIZE.md,
     paddingVertical: SPACING.sm,
@@ -439,6 +582,8 @@ const styles = StyleSheet.create({
   inputMultiline: { minHeight: 56, paddingTop: SPACING.sm, textAlignVertical: 'top' },
   bioMultiline: { minHeight: 100, paddingTop: SPACING.sm, textAlignVertical: 'top', borderBottomWidth: 0 },
   error: { fontSize: FONT_SIZE.sm, marginTop: SPACING.sm },
+  roleSubsection: { marginTop: SPACING.lg },
+  roleSectionMeta: { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.semibold, marginBottom: SPACING.xs },
   chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, marginTop: SPACING.xs },
   chip: {
     paddingVertical: 8,
@@ -447,13 +592,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   chipLabel: { fontSize: FONT_SIZE.sm, fontWeight: FONT_WEIGHT.medium },
-  locationPress: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: SPACING.sm,
-  },
-  locationIcon: { marginRight: SPACING.sm },
-  locationText: { flex: 1, fontSize: FONT_SIZE.md },
   footer: {
     borderTopWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: SPACING.lg,
@@ -465,4 +603,41 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   saveBtnText: { color: '#fff', fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.semibold },
+  mediaHint: { fontSize: FONT_SIZE.sm, marginBottom: SPACING.md },
+  /** Fills `sectionPad` width; rows divide space equally — no window-based cell size. */
+  mediaGrid: { width: '100%', alignSelf: 'stretch' },
+  mediaGridRow: { flexDirection: 'row', width: '100%', gap: SPACING.sm },
+  mediaGridCell: { flex: 1, aspectRatio: 1, minWidth: 0 },
+  mediaCellInner: { flex: 1, borderRadius: RADIUS.md, overflow: 'hidden' },
+  mediaThumb: { width: '100%', height: '100%' },
+  mediaVideoPlaceholder: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: RADIUS.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(128,128,128,0.25)',
+  },
+  mediaVideoLabel: { fontSize: FONT_SIZE.xs, marginTop: SPACING.xs },
+  mediaRemoveBtn: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mediaAddCell: {
+    flex: 1,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 48,
+  },
+  mediaCellDisabled: { opacity: 0.35 },
 });

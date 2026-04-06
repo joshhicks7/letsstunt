@@ -2,7 +2,7 @@ import type { StuntGroup, StunterProfile } from '@/types';
 
 /** Map a group to a profile-shaped object for matches list & shared UI */
 export function stuntGroupToPreviewProfile(g: StuntGroup): StunterProfile {
-  const primary = g.rolesFilled[0] ?? g.rolesNeeded[0] ?? 'other';
+  const primary = g.rolesFilled[0] ?? g.rolesNeeded[0] ?? 'coed-flyer';
   const secondary = [...g.rolesFilled.slice(1), ...g.rolesNeeded].filter((p) => p !== primary);
   const positions = [primary, ...secondary.filter((p, i, a) => a.indexOf(p) === i)];
 

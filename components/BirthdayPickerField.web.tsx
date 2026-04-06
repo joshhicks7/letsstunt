@@ -2,56 +2,64 @@ import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Text as ThemedText } from '@/components/Themed';
 import Colors from '@/constants/Colors';
-import { SPACING, FONT_SIZE, RADIUS } from '@/constants/Theme';
+import { SPACING, FONT_SIZE } from '@/constants/Theme';
 import { useColorScheme } from '@/components/useColorScheme';
-import { defaultBirthdayForPicker, toISODateString } from '@/lib/dates';
 
 interface BirthdayPickerFieldProps {
   value: string;
   onChange: (isoDate: string) => void;
   hasError?: boolean;
+  /** No card border — matches native plain / section hairlines */
+  plain?: boolean;
+  /** Hide inner “Birthday” label when the parent already labels the field */
+  hideLabel?: boolean;
+  /** Ignored on web (native-only phrasing); accepted for shared call sites */
+  emptyLabel?: string;
 }
 
-/** Native HTML date input on web */
-export function BirthdayPickerField({ value, onChange, hasError }: BirthdayPickerFieldProps) {
+/** Native HTML date input on web — minimal underline style (no double box). */
+export function BirthdayPickerField({
+  value,
+  onChange,
+  hasError,
+  plain: _plain,
+  hideLabel,
+  emptyLabel: _emptyLabel,
+}: BirthdayPickerFieldProps) {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? 'light'];
-  const iso = value || toISODateString(defaultBirthdayForPicker());
+  const borderBottom = `1px solid ${hasError ? '#c00' : colors.border}`;
 
   return (
-    <View style={[styles.wrap, { borderColor: hasError ? '#c00' : colors.border, backgroundColor: colors.card }]}>
-      <ThemedText style={[styles.label, { color: colors.secondary }]}>Birthday</ThemedText>
+    <View>
+      {!hideLabel ? <ThemedText style={[styles.label, { color: colors.secondary }]}>Birthday</ThemedText> : null}
       <input
         type="date"
-        value={iso}
-        max={toISODateString(new Date(new Date().setFullYear(new Date().getFullYear() - 18)))}
-        min={toISODateString(new Date(new Date().setFullYear(new Date().getFullYear() - 100)))}
+        value={value.trim() || ''}
         onChange={(e) => onChange(e.target.value)}
         style={{
-          ...styles.input,
+          display: 'block',
+          width: '100%',
+          height: 48,
+          margin: 0,
+          paddingLeft: 0,
+          paddingRight: 0,
+          paddingTop: hideLabel ? 0 : SPACING.xs,
+          paddingBottom: 0,
+          boxSizing: 'border-box',
+          fontSize: FONT_SIZE.md,
           color: colors.text,
-          borderColor: colors.border,
-          backgroundColor: colors.card,
-        }}
+          backgroundColor: 'transparent',
+          border: 'none',
+          borderBottom,
+          borderRadius: 0,
+          outline: 'none',
+        } as React.CSSProperties}
       />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: {
-    borderRadius: RADIUS.md,
-    borderWidth: 1,
-    padding: SPACING.sm,
-    paddingHorizontal: SPACING.md,
-  },
   label: { fontSize: FONT_SIZE.sm, marginBottom: SPACING.xs },
-  input: {
-    height: 40,
-    borderWidth: 1,
-    borderRadius: RADIUS.sm,
-    paddingHorizontal: SPACING.sm,
-    fontSize: FONT_SIZE.md,
-    width: '100%',
-  },
 });

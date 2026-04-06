@@ -11,7 +11,7 @@ import { Text as ThemedText, View as ThemedView } from '@/components/Themed';
 import Colors from '@/constants/Colors';
 import { POSITION_LABELS } from '@/constants/positions';
 import { DISCOVER_ACTION_BTN_SIZE, DISCOVER_ACTION_ICON_SIZE } from '@/constants/discover';
-import { SPACING, RADIUS } from '@/constants/Theme';
+import { SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT } from '@/constants/Theme';
 import { useAuth } from '@/context/AuthContext';
 import { useSwipe } from '@/context/SwipeContext';
 import { useColorScheme } from '@/components/useColorScheme';
@@ -82,17 +82,33 @@ export default function DiscoverScreen() {
 
   return (
     <ThemedView style={[styles.container, { paddingTop: insets.top }]}>
+      <View style={styles.header}>
+        <ThemedText style={[styles.brandTitle, { color: colors.text }]}>{"Let's Stunt"}</ThemedText>
+        <View style={styles.headerActions}>
+          <Pressable
+            style={styles.headerIconBtn}
+            onPress={() => router.push('/discover/groups')}
+            hitSlop={12}
+            accessibilityLabel="Stunt groups"
+          >
+            <FontAwesome name="object-group" size={22} color={colors.tint} />
+          </Pressable>
+          <Pressable
+            style={styles.headerIconBtn}
+            onPress={current ? openReport : undefined}
+            hitSlop={12}
+            accessibilityLabel="Report"
+            accessibilityState={{ disabled: !current }}
+            disabled={!current}
+          >
+            <FontAwesome name="flag-o" size={22} color={current ? colors.secondary : colors.tabIconDefault} />
+          </Pressable>
+        </View>
+      </View>
+
       <View style={styles.cardWrap}>
         {current ? (
           <>
-            <Pressable
-              style={styles.reportBtn}
-              onPress={openReport}
-              hitSlop={12}
-              accessibilityLabel="Report"
-            >
-              <FontAwesome name="flag-o" size={22} color={colors.secondary} />
-            </Pressable>
             <SwipeableDiscoverCard ref={swipeRef} cardKey={cardKey} onSwipeComplete={completeSwipe} likeColor={colors.tint}>
               {current.kind === 'profile' ? (
                 <SwipeCard profile={current.data} onPressName={openDetail} />
@@ -141,16 +157,39 @@ export default function DiscoverScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, minHeight: 200 },
-  cardWrap: { flex: 1, minHeight: 280, position: 'relative', paddingHorizontal: SPACING.sm },
-  reportBtn: {
+  header: {
+    paddingHorizontal: SPACING.md,
+    paddingBottom: SPACING.sm,
+    minHeight: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  brandTitle: {
+    fontSize: FONT_SIZE.lg,
+    fontWeight: FONT_WEIGHT.bold,
+    textAlign: 'center',
+  },
+  headerActions: {
     position: 'absolute',
-    top: SPACING.sm,
     right: SPACING.md,
-    zIndex: 20,
+    top: 0,
+    bottom: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
+  headerIconBtn: {
     width: 44,
     height: 44,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  cardWrap: {
+    flex: 1,
+    minHeight: 280,
+    position: 'relative',
+    paddingHorizontal: SPACING.sm,
+    marginTop: SPACING.md,
   },
   empty: {
     flex: 1,

@@ -10,8 +10,8 @@ import { id, now, seedMedia, IMG_COED_STUNT_TIKTOK, IMG_ATHLETICS_DEMO } from '@
 interface AuthContextValue {
   user: AuthUser | null;
   onboardingComplete: boolean;
-  signUp: (email: string, password: string) => Promise<void>;
-  login: (email: string, password: string) => Promise<void>;
+  signUp: (email: string, password: string) => Promise<{ onboardingComplete: boolean }>;
+  login: (email: string, password: string) => Promise<{ onboardingComplete: boolean }>;
   logout: () => void;
   completeOnboarding: (draft: OnboardingDraft) => void;
   updateProfile: (partial: Partial<StunterProfile>) => void;
@@ -20,7 +20,7 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 function createProfileFromDraft(uid: string, email: string, draft: OnboardingDraft): StunterProfile {
-  const primary = draft.primaryRole ?? 'other';
+  const primary = draft.primaryRole ?? 'coed-flyer';
   const positions = mergePrimaryAndSecondary(draft.primaryRole, draft.secondaryRoles);
   const finalPositions = positions.length > 0 ? positions : [primary];
 
@@ -73,10 +73,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const newUser: AuthUser = {
       id: uid,
       email,
-      profile: createProfileFromDraft(uid, email, { ...placeholderDraft, primaryRole: 'other', secondaryRoles: [] }),
+      profile: createProfileFromDraft(uid, email, { ...placeholderDraft, primaryRole: 'coed-flyer', secondaryRoles: [] }),
     };
     setUser(newUser);
     setOnboardingComplete(false);
+    return { onboardingComplete: false as const };
   }, []);
 
   const login = useCallback(async (_email: string, _password: string) => {
@@ -89,12 +90,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         displayName: 'Jordan K.',
         birthday: '2000-01-01',
         primaryRole: 'coed-base',
-        secondaryRoles: ['male-side-base'],
-        positions: ['coed-base', 'male-side-base'],
+        secondaryRoles: ['side-base'],
+        positions: ['coed-base', 'side-base'],
         skillLevel: 'intermediate',
         yearsExperience: 5,
         availability: ['weekends', 'events', 'weekdays'],
-        skillTags: ['rewind', 'coed-stunting', 'basket-toss'],
+        skillTags: ['coed_rewind', 'coed_stunting', 'basket_toss'],
         currentlyWorkingOn: 'Full-ups and elite rewinds',
         instagramHandle: '@jordan.stunts',
         media: [
@@ -110,6 +111,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
     setUser(demoUser);
     setOnboardingComplete(true);
+    return { onboardingComplete: true as const };
   }, []);
 
   const logout = useCallback(() => {

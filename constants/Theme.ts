@@ -14,6 +14,8 @@ export const FONT_SIZE = {
   lg: 18,
   xl: 22,
   xxl: 28,
+  /** Welcome / marketing headlines */
+  hero: 34,
 } as const;
 
 export const FONT_WEIGHT = {
@@ -30,3 +32,6 @@ export const RADIUS = {
   xl: 24,
   full: 9999,
 } as const;
+
+/** Profile tab + discover profile detail — hero photo strip */
+export const PROFILE_COVER_CAROUSEL_HEIGHT = 300;

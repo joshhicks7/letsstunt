@@ -123,8 +123,16 @@ export const profileSectionStyles = StyleSheet.create({
     overflow: 'hidden',
     marginBottom: SPACING.md,
   },
-  heroName: { fontSize: FONT_SIZE.xxl, fontWeight: FONT_WEIGHT.bold, textAlign: 'center' },
+  /** Group detail hero location line (`GroupDetailHero`) */
   heroMeta: { fontSize: FONT_SIZE.sm, marginTop: SPACING.xs, textAlign: 'center' },
+  /** Profile tab + discover profile detail — text stays secondary to photos */
+  profileHeroName: { fontSize: FONT_SIZE.lg, fontWeight: FONT_WEIGHT.semibold, textAlign: 'center' },
+  profileHeroMeta: { fontSize: FONT_SIZE.xs, marginTop: 2, textAlign: 'center', lineHeight: 16 },
+  profileHeroBlockBody: {
+    paddingHorizontal: SPACING.md,
+    paddingTop: SPACING.sm,
+    paddingBottom: SPACING.md,
+  },
 });
 
 const styles = profileSectionStyles;

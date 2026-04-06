@@ -1,5 +1,5 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { Text as ThemedText, View as ThemedView } from '@/components/Themed';
@@ -8,6 +8,8 @@ import { MIN_AGE } from '@/constants/safety';
 import { SPACING, FONT_SIZE, FONT_WEIGHT, RADIUS } from '@/constants/Theme';
 import { useAuth } from '@/context/AuthContext';
 import { useColorScheme } from '@/components/useColorScheme';
+import { hrefWithReturnTo, sanitizeReturnTo } from '@/lib/authRedirect';
+import { goBackOrReplace } from '@/lib/goBackOrReplace';
 
 export default function SignUpScreen() {
   const { signUp } = useAuth();
@@ -16,19 +18,21 @@ export default function SignUpScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [agreeTerms, setAgreeTerms] = useState(false);
+  const { returnTo } = useLocalSearchParams<{ returnTo?: string | string[] }>();
 
   const handleSignUp = async () => {
     if (!email.trim() || !password) return;
     if (!agreeTerms) return;
     await signUp(email.trim(), password);
-    router.replace('/(onboarding)');
+    const safe = sanitizeReturnTo(returnTo) ?? undefined;
+    router.replace(hrefWithReturnTo('/(onboarding)', safe));
   };
 
   const canSignUp = email.trim().length > 0 && password.length > 0 && agreeTerms;
 
   return (
     <ThemedView style={styles.container}>
-      <Pressable onPress={() => router.back()} style={styles.back}>
+      <Pressable onPress={() => goBackOrReplace('/(auth)/welcome')} style={styles.back}>
         <FontAwesome name="arrow-left" size={22} color={colors.text} />
       </Pressable>
       <ThemedText style={styles.title}>Create account</ThemedText>

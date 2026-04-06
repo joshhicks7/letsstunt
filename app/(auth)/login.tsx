@@ -1,5 +1,5 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { Text as ThemedText, View as ThemedView } from '@/components/Themed';
@@ -7,6 +7,8 @@ import Colors from '@/constants/Colors';
 import { SPACING, FONT_SIZE, FONT_WEIGHT, RADIUS } from '@/constants/Theme';
 import { useAuth } from '@/context/AuthContext';
 import { useColorScheme } from '@/components/useColorScheme';
+import { asPostAuthHref, hrefWithReturnTo, sanitizeReturnTo } from '@/lib/authRedirect';
+import { goBackOrReplace } from '@/lib/goBackOrReplace';
 
 export default function LoginScreen() {
   const { login } = useAuth();
@@ -14,17 +16,25 @@ export default function LoginScreen() {
   const colors = Colors[colorScheme ?? 'light'];
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const { returnTo } = useLocalSearchParams<{ returnTo?: string | string[] }>();
 
   const handleLogin = async () => {
     if (!email.trim()) return;
-    await login(email.trim(), password);
-    // Defer navigation so React commits auth state before tabs mount (avoids blank Discover/Matches)
-    setTimeout(() => router.replace('/(tabs)/discover'), 0);
+    const { onboardingComplete: done } = await login(email.trim(), password);
+    const safe = sanitizeReturnTo(returnTo);
+    // Defer so auth state commits before the next screen mounts (avoids blank tab screens).
+    setTimeout(() => {
+      if (!done) {
+        router.replace(hrefWithReturnTo('/(onboarding)', safe ?? undefined));
+      } else {
+        router.replace(asPostAuthHref(safe ?? '/(tabs)/discover'));
+      }
+    }, 0);
   };
 
   return (
     <ThemedView style={styles.container}>
-      <Pressable onPress={() => router.back()} style={styles.back}>
+      <Pressable onPress={() => goBackOrReplace('/(auth)/welcome')} style={styles.back}>
         <FontAwesome name="arrow-left" size={22} color={colors.text} />
       </Pressable>
       <ThemedText style={styles.title}>Log in</ThemedText>

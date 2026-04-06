@@ -1,5 +1,5 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { router, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import React from 'react';
 import { Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -16,10 +16,11 @@ import Colors from '@/constants/Colors';
 import { POSITION_LABELS } from '@/constants/positions';
 import { SKILL_LEVEL_LABELS } from '@/constants/skills';
 import { SKILL_TAG_LABELS } from '@/constants/skillTags';
-import { SPACING, FONT_SIZE } from '@/constants/Theme';
+import { SPACING, FONT_SIZE, PROFILE_COVER_CAROUSEL_HEIGHT } from '@/constants/Theme';
 import { GroupDetailHero } from '@/components/GroupDetailHero';
 import { ProfileCoverCarousel } from '@/components/ProfileCoverCarousel';
 import { MOCK_GROUPS } from '@/data/mockData';
+import { goBackOrReplace } from '@/lib/goBackOrReplace';
 import { rosterProfilesForGroup } from '@/lib/groupRoster';
 import { useSwipe } from '@/context/SwipeContext';
 import { useColorScheme } from '@/components/useColorScheme';
@@ -42,7 +43,7 @@ export default function DiscoverProfileDetailScreen() {
   if (!profile && !group) {
     return (
       <ThemedView style={[styles.centered, { paddingTop: insets.top }]}>
-        <Pressable onPress={() => router.back()} style={styles.backRow}>
+        <Pressable onPress={() => goBackOrReplace('/(tabs)/discover')} style={styles.backRow}>
           <FontAwesome name="arrow-left" size={22} color={colors.text} />
           <ThemedText style={{ color: colors.text }}>Back</ThemedText>
         </Pressable>
@@ -59,7 +60,7 @@ export default function DiscoverProfileDetailScreen() {
     const memberProfiles = rosterProfilesForGroup(group, allProfiles);
     return (
       <ThemedView style={[styles.container, { paddingTop: insets.top }]}>
-        <Pressable onPress={() => router.back()} style={[styles.backRow, { paddingHorizontal: SPACING.lg }]}>
+        <Pressable onPress={() => goBackOrReplace('/(tabs)/discover')} style={[styles.backRow, { paddingHorizontal: SPACING.lg }]}>
           <FontAwesome name="arrow-left" size={22} color={colors.text} />
           <ThemedText style={[styles.backText, { color: colors.text }]}>Back</ThemedText>
         </Pressable>
@@ -155,7 +156,7 @@ export default function DiscoverProfileDetailScreen() {
 
   return (
     <ThemedView style={[styles.container, { paddingTop: insets.top }]}>
-      <Pressable onPress={() => router.back()} style={[styles.backRow, { paddingHorizontal: SPACING.lg }]}>
+      <Pressable onPress={() => goBackOrReplace('/(tabs)/discover')} style={[styles.backRow, { paddingHorizontal: SPACING.lg }]}>
         <FontAwesome name="arrow-left" size={22} color={colors.text} />
         <ThemedText style={[styles.backText, { color: colors.text }]}>Back</ThemedText>
       </Pressable>
@@ -171,15 +172,17 @@ export default function DiscoverProfileDetailScreen() {
             imageMedia={imageMedia}
             carouselWidth={coverCarouselWidth}
             colors={colors}
+            height={PROFILE_COVER_CAROUSEL_HEIGHT}
+            placeholderIconSize={64}
           />
-          <View style={ps.blockBody}>
-            <ThemedText style={ps.heroName}>{p.displayName}</ThemedText>
+          <View style={ps.profileHeroBlockBody}>
+            <ThemedText style={[ps.profileHeroName, { color: colors.text }]}>{p.displayName}</ThemedText>
             {age != null ? (
-              <ThemedText style={[ps.heroMeta, { color: colors.secondary }]}>{age} years old</ThemedText>
+              <ThemedText style={[ps.profileHeroMeta, { color: colors.secondary }]}>{age} years old</ThemedText>
             ) : null}
             {locationLine ? (
-              <ThemedText style={[ps.heroMeta, { color: colors.secondary }]}>
-                <FontAwesome name="map-marker" size={13} color={colors.secondary} /> {locationLine}
+              <ThemedText style={[ps.profileHeroMeta, { color: colors.secondary }]}>
+                <FontAwesome name="map-marker" size={11} color={colors.secondary} /> {locationLine}
               </ThemedText>
             ) : null}
           </View>

@@ -3,9 +3,9 @@ import React, { useMemo, useState } from 'react';
 import { Platform, Pressable, StyleSheet, View } from 'react-native';
 import { Text as ThemedText } from '@/components/Themed';
 import Colors from '@/constants/Colors';
-import { SPACING, FONT_SIZE, RADIUS } from '@/constants/Theme';
+import { FONT_SIZE, SPACING } from '@/constants/Theme';
 import { useColorScheme } from '@/components/useColorScheme';
-import { defaultBirthdayForPicker, parseISODate, toISODateString } from '@/lib/dates';
+import { parseISODate, todayDate, toISODateString } from '@/lib/dates';
 
 interface BirthdayPickerFieldProps {
   value: string;
@@ -13,18 +13,29 @@ interface BirthdayPickerFieldProps {
   hasError?: boolean;
   /** No card border — sits inside a section with hairline separators */
   plain?: boolean;
+  /** Shown when no date is set (use when a parent label already says “Birthday”) */
+  emptyLabel?: string;
+  /** Web: hide embedded label (parity with `.web`); ignored on native */
+  hideLabel?: boolean;
 }
 
-export function BirthdayPickerField({ value, onChange, hasError, plain }: BirthdayPickerFieldProps) {
+export function BirthdayPickerField({
+  value,
+  onChange,
+  hasError,
+  plain: _plain,
+  emptyLabel = 'Tap to choose your birthday',
+  hideLabel: _hideLabel,
+}: BirthdayPickerFieldProps) {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? 'light'];
   const [show, setShow] = useState(false);
 
-  const date = useMemo(() => parseISODate(value) ?? defaultBirthdayForPicker(), [value]);
+  const date = useMemo(() => parseISODate(value) ?? todayDate(), [value]);
 
   const display = value && parseISODate(value)
     ? new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(parseISODate(value)!)
-    : 'Tap to choose your birthday';
+    : emptyLabel;
 
   const onPick = (event: DateTimePickerEvent, selected?: Date) => {
     if (Platform.OS === 'android' && event.type === 'dismissed') {
@@ -35,26 +46,15 @@ export function BirthdayPickerField({ value, onChange, hasError, plain }: Birthd
     if (selected) onChange(toISODateString(selected));
   };
 
-  const maxDate = new Date();
-  maxDate.setFullYear(maxDate.getFullYear() - 18);
-  const minDate = new Date();
-  minDate.setFullYear(minDate.getFullYear() - 100);
-
   return (
     <View>
       <Pressable
         onPress={() => setShow(true)}
         style={[
-          styles.field,
-          plain ? styles.fieldPlain : null,
-          plain
-            ? {
-                borderBottomColor: hasError ? '#c00' : colors.border,
-              }
-            : {
-                backgroundColor: colors.card,
-                borderColor: hasError ? '#c00' : colors.border,
-              },
+          styles.fieldPlain,
+          {
+            borderBottomColor: hasError ? '#c00' : colors.border,
+          },
         ]}
       >
         <ThemedText style={[styles.fieldText, !value && { color: colors.secondary }]}>{display}</ThemedText>
@@ -65,8 +65,6 @@ export function BirthdayPickerField({ value, onChange, hasError, plain }: Birthd
           mode="date"
           display={Platform.OS === 'ios' ? 'spinner' : 'default'}
           onChange={onPick}
-          maximumDate={maxDate}
-          minimumDate={minDate}
           themeVariant={colorScheme === 'dark' ? 'dark' : 'light'}
         />
       ) : null}
@@ -80,13 +78,6 @@ export function BirthdayPickerField({ value, onChange, hasError, plain }: Birthd
 }
 
 const styles = StyleSheet.create({
-  field: {
-    height: 48,
-    borderRadius: RADIUS.md,
-    borderWidth: 1,
-    paddingHorizontal: SPACING.md,
-    justifyContent: 'center',
-  },
   fieldPlain: {
     height: 48,
     borderWidth: 0,
@@ -94,6 +85,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 0,
     borderBottomWidth: StyleSheet.hairlineWidth,
     backgroundColor: 'transparent',
+    justifyContent: 'center',
   },
   fieldText: { fontSize: FONT_SIZE.md },
   doneIos: { alignItems: 'flex-end', paddingTop: SPACING.sm },

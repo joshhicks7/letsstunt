@@ -6,32 +6,46 @@
 export type PositionType =
   | 'coed-base'
   | 'coed-flyer'
-  | 'male-side-base'
-  | 'female-side-base'
+  | 'side-base'
+  | 'main-base'
   | 'back-spot'
   | 'front-spot'
+  | 'group-flyer'
   | 'all-girl-base'
-  | 'all-girl-flyer'
-  | 'group-stunt'
-  | 'basket-tosser'
-  | 'basket-flyer'
-  | 'basket-base'
-  | 'other';
+  | 'all-girl-flyer';
 
 export type SkillLevel = 'beginner' | 'intermediate' | 'advanced' | 'elite';
 
 export type AvailabilityType = 'weekdays' | 'weekends' | 'events' | 'competitions';
 
-export type SkillTag =
-  | 'basket-toss'
-  | 'lib'
-  | 'rewind'
-  | 'twisting'
-  | 'tumbling'
-  | 'full-up'
+export type CoedSkillTags =
   | 'cupie'
-  | 'coed-stunting'
-  | 'all-girl';
+  | 'coed_stunting'
+  | 'coed_double_up'
+  | 'coed_full_up'
+  | 'coed_rewind'
+  | 'coed_front_handspring_up'
+  | 'coed_back_handspring_up'
+  | 'coed_one_to_one'
+  | 'coed_lib'
+  | 'coed_platform'
+  | 'coed_toss_hands'
+  | 'coed_toss_extension';
+
+export type GroupSkillTags =
+  | 'basket_toss'
+  | 'group_double_up'
+  | 'group_full_up'
+  | 'group_front_handspring_up'
+  | 'group_back_handspring_up'
+  | 'group_rewind'
+  | 'group_tick_tock'
+  | 'group_lib'
+  | 'group_full_down'
+  | 'group_double_down'
+  | 'group_prep';
+
+export type SkillTag = CoedSkillTags | GroupSkillTags;
 
 export interface StunterProfile {
   id: string;
@@ -97,6 +111,25 @@ export interface Match {
   id: string;
   profileIds: [string, string];
   matchedAt: string;
+}
+
+/**
+ * User-created stunt squad. Share `https://…/group/{joinSlug}/join` so friends can join from SMS / anywhere.
+ * Max 3 people (creator + 2). Live when at least 2 members.
+ * App rule: each user may belong to only one squad at a time.
+ */
+export interface UserStuntGroup {
+  id: string;
+  /** Public path segment, e.g. `https://letsstunt.com/group/mySlug/join` */
+  joinSlug: string;
+  name: string;
+  /** What you’re looking for — schedule, roles, etc. */
+  bio: string;
+  creatorId: string;
+  /** Creator first; others added when they open the join link (order may vary). */
+  memberIds: string[];
+  createdAt: string;
+  updatedAt: string;
 }
 
 /** In-app DM thread (local until backend sync). */

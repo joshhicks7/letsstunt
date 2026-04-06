@@ -3,15 +3,17 @@ import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { ThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
-import { Stack } from 'expo-router';
+import { Stack, useGlobalSearchParams, usePathname, useRouter, useSegments, useRootNavigationState } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo } from 'react';
 import { Platform, useWindowDimensions, View } from 'react-native';
 import 'react-native-reanimated';
-import { AuthProvider } from '@/context/AuthContext';
+import { AuthProvider, useAuth } from '@/context/AuthContext';
+import { StuntGroupProvider } from '@/context/StuntGroupContext';
 import { SwipeProvider } from '@/context/SwipeContext';
 import { useColorScheme } from '@/components/useColorScheme';
+import { asPostAuthHref, hrefFromSegments, hrefWithReturnTo, sanitizeReturnTo } from '@/lib/authRedirect';
 import { buildNavigationTheme } from '@/lib/navigationTheme';
 
 const MAX_CONTENT_WIDTH = 428;
@@ -27,7 +29,9 @@ export default function RootLayout() {
   return (
     <AuthProvider>
       <SwipeProvider>
-        <RootLayoutNav />
+        <StuntGroupProvider>
+          <RootLayoutNav />
+        </StuntGroupProvider>
       </SwipeProvider>
     </AuthProvider>
   );
@@ -66,7 +70,83 @@ function RootLayoutNav() {
             </Stack>
           </View>
         </View>
+        {/* After Stack so navigator mounts before any router.replace in this effect */}
+        <AuthRouteGuard />
       </ThemeProvider>
     </GestureHandlerRootView>
   );
+}
+
+/** Keeps deep links off protected groups: guests → auth, signed-in incomplete → onboarding. */
+function AuthRouteGuard() {
+  const { user, onboardingComplete } = useAuth();
+  const segments = useSegments();
+  const pathname = usePathname();
+  const globalParams = useGlobalSearchParams<{ returnTo?: string | string[] }>();
+  const router = useRouter();
+  const rootNav = useRootNavigationState();
+
+  const returnToParam = globalParams.returnTo;
+  const returnToKey = Array.isArray(returnToParam) ? returnToParam[0] : returnToParam;
+
+  useEffect(() => {
+    if (!rootNav?.key) return;
+
+    const first = segments[0];
+    const second = segments[1];
+    const inAuth = first === '(auth)';
+    const inOnboarding = first === '(onboarding)';
+    const inTabs = first === '(tabs)';
+    const isBootstrapRoute = pathname === '/';
+
+    const intendedHref =
+      segments.length > 0 ? hrefFromSegments(segments as string[]) : undefined;
+
+    const run = () => {
+      if (!user) {
+        if (first === 'group' && pathname.startsWith('/group/')) {
+          router.replace(hrefWithReturnTo('/(auth)/welcome', pathname));
+          return;
+        }
+        if (!inAuth && !isBootstrapRoute) {
+          if (intendedHref) {
+            router.replace(hrefWithReturnTo('/(auth)/welcome', intendedHref));
+          } else {
+            router.replace('/(auth)/welcome');
+          }
+        }
+        return;
+      }
+
+      if (!onboardingComplete) {
+        if (first === 'group' && pathname.startsWith('/group/')) {
+          router.replace(hrefWithReturnTo('/(onboarding)', pathname));
+          return;
+        }
+        if (inTabs) {
+          if (intendedHref) {
+            router.replace(hrefWithReturnTo('/(onboarding)', intendedHref));
+          } else {
+            router.replace('/(onboarding)');
+          }
+        }
+        return;
+      }
+
+      if (inOnboarding) {
+        router.replace('/(tabs)/discover');
+        return;
+      }
+
+      if (inAuth && (second === 'welcome' || second === 'login' || second === 'sign-up')) {
+        const next = sanitizeReturnTo(returnToParam) ?? '/(tabs)/discover';
+        router.replace(asPostAuthHref(next));
+      }
+    };
+
+    const id = requestAnimationFrame(run);
+    return () => cancelAnimationFrame(id);
+  }, [user, onboardingComplete, segments, pathname, rootNav?.key, router, returnToKey, returnToParam]);
+
+  return null;
 }

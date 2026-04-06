@@ -8,6 +8,7 @@ import Colors from '@/constants/Colors';
 import { SPACING, FONT_SIZE, FONT_WEIGHT, RADIUS } from '@/constants/Theme';
 import { useAuth } from '@/context/AuthContext';
 import { useColorScheme } from '@/components/useColorScheme';
+import { goBackOrReplace } from '@/lib/goBackOrReplace';
 
 export default function ProfileSettingsScreen() {
   const { logout } = useAuth();
@@ -22,7 +23,7 @@ export default function ProfileSettingsScreen() {
 
   return (
     <ThemedView style={[styles.screen, { paddingTop: insets.top }]}>
-      <Pressable onPress={() => router.back()} style={styles.back} hitSlop={12}>
+      <Pressable onPress={() => goBackOrReplace('/(tabs)/profile')} style={styles.back} hitSlop={12}>
         <FontAwesome name="arrow-left" size={22} color={colors.text} />
         <ThemedText style={[styles.backText, { color: colors.text }]}>Back</ThemedText>
       </Pressable>
@@ -32,13 +33,6 @@ export default function ProfileSettingsScreen() {
 
         <ThemedText style={[styles.groupLabel, { color: colors.secondary }]}>Account</ThemedText>
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <SettingsRow
-            icon="user"
-            label="Edit profile"
-            colors={colors}
-            onPress={() => router.push('/profile/edit')}
-            isLast={false}
-          />
           <SettingsRow icon="sign-out" label="Sign out" colors={colors} onPress={onLogout} isLast />
         </View>
 

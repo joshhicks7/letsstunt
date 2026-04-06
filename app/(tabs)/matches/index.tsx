@@ -58,14 +58,21 @@ export default function MatchesScreen() {
         </ThemedText>
       </View>
       <FlatList
+        style={styles.flatList}
         data={matches}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
-        contentContainerStyle={[styles.list, matches.length === 0 && styles.listEmpty]}
+        contentContainerStyle={[styles.list, matches.length === 0 && styles.listEmptyCentered]}
         ListEmptyComponent={
-          <ThemedText style={[styles.empty, { color: colors.secondary }]}>
-            No matches yet. Swipe right on Discover to find stunt partners!
-          </ThemedText>
+          <View style={styles.emptyBlock}>
+            <View style={[styles.emptyIconWrap, { backgroundColor: colors.tint + '18' }]}>
+              <FontAwesome name="heart-o" size={36} color={colors.tint} />
+            </View>
+            <ThemedText style={[styles.emptyTitle, { color: colors.text }]}>No matches yet</ThemedText>
+            <ThemedText style={[styles.emptyBody, { color: colors.secondary }]}>
+              Swipe right on Discover to find stunt partners and groups. Your chats will show up here.
+            </ThemedText>
+          </View>
         }
       />
     </ThemedView>
@@ -77,8 +84,9 @@ const styles = StyleSheet.create({
   header: { paddingHorizontal: SPACING.md, marginBottom: SPACING.md },
   title: { fontSize: FONT_SIZE.xl, fontWeight: FONT_WEIGHT.bold },
   subtitle: { fontSize: FONT_SIZE.sm },
+  flatList: { flex: 1 },
   list: { paddingHorizontal: SPACING.md, paddingBottom: SPACING.xxl },
-  listEmpty: { flexGrow: 1 },
+  listEmptyCentered: { flexGrow: 1, justifyContent: 'center' },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -91,5 +99,26 @@ const styles = StyleSheet.create({
   name: { fontWeight: FONT_WEIGHT.bold, fontSize: FONT_SIZE.md },
   meta: { fontSize: FONT_SIZE.sm },
   chatHint: { marginLeft: SPACING.sm, opacity: 0.9 },
-  empty: { textAlign: 'center', paddingVertical: SPACING.xl },
+  emptyBlock: {
+    alignSelf: 'center',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.xl,
+    maxWidth: 320,
+  },
+  emptyIconWrap: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: SPACING.lg,
+  },
+  emptyTitle: {
+    fontSize: FONT_SIZE.lg,
+    fontWeight: FONT_WEIGHT.bold,
+    textAlign: 'center',
+    marginBottom: SPACING.sm,
+  },
+  emptyBody: { fontSize: FONT_SIZE.md, textAlign: 'center', lineHeight: 22 },
 });

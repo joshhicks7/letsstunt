@@ -21,7 +21,7 @@ export default function Root({ children }: { children: React.ReactNode }) {
         <ScrollViewStyleReset />
 
         <link rel="manifest" href="/manifest.json" />
-        <link rel="apple-touch-icon" href="/icon-192.png" />
+        <link rel="apple-touch-icon" href="/pwa_192x192.png" />
         <meta name="theme-color" content="#5B4B8A" media="(prefers-color-scheme: light)" />
         <meta name="theme-color" content="#5B4B8A" media="(prefers-color-scheme: dark)" />
         <meta name="description" content="Find flyers, bases, and stunt partners nearby." />

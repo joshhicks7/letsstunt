@@ -1,5 +1,4 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { router } from 'expo-router';
 import React from 'react';
 import { Linking, Pressable, ScrollView, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -8,6 +7,7 @@ import Colors from '@/constants/Colors';
 import { REPORT_EMAIL } from '@/constants/safety';
 import { SPACING, FONT_SIZE, FONT_WEIGHT, RADIUS } from '@/constants/Theme';
 import { useColorScheme } from '@/components/useColorScheme';
+import { goBackOrReplace } from '@/lib/goBackOrReplace';
 
 export default function PrivacyPolicyScreen() {
   const colorScheme = useColorScheme();
@@ -18,7 +18,7 @@ export default function PrivacyPolicyScreen() {
 
   return (
     <ThemedView style={[styles.container, { paddingTop: insets.top }]}>
-      <Pressable onPress={() => router.back()} style={styles.back}>
+      <Pressable onPress={() => goBackOrReplace('/(auth)/welcome')} style={styles.back}>
         <FontAwesome name="arrow-left" size={22} color={colors.text} />
         <ThemedText style={[styles.backText, { color: colors.text }]}>Back</ThemedText>
       </Pressable>
@@ -35,7 +35,7 @@ export default function PrivacyPolicyScreen() {
         </Section>
 
         <Section title="Information we collect">
-          We collect account information (email and password), profile information (display name, birthday, primary and secondary roles, skill level and tags, availability, photos/videos, location, team or school, social handles, bio), and usage data (likes, passes, matches). We use this to run the app, show relevant partners and groups, and enforce our policies.
+          We collect account information (email and password), profile information (display name, birthday, primary and secondary roles, skill level and tags, photos/videos, location, team or school, social handles, bio), and usage data (likes, passes, matches). We use this to run the app, show relevant partners and groups, and enforce our policies.
         </Section>
 
         <Section title="How we use your information">
