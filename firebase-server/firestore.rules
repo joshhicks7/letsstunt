@@ -1,0 +1,106 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAuthed() {
+      return request.auth != null;
+    }
+
+    function matchUserIds(matchId) {
+      return get(/databases/$(database)/documents/matches/$(matchId)).data.userIds;
+    }
+
+    match /users/{userId} {
+      allow read, write: if isAuthed() && request.auth.uid == userId;
+    }
+
+    match /publicProfiles/{userId} {
+      allow read: if isAuthed();
+      allow write: if isAuthed() && request.auth.uid == userId;
+    }
+
+    match /groupListings/{listingId} {
+      allow read: if isAuthed();
+      allow create: if isAuthed()
+        && request.resource.data.creatorId == request.auth.uid;
+      allow update, delete: if isAuthed()
+        && resource.data.creatorId == request.auth.uid;
+    }
+
+    match /squads/{squadId} {
+      allow read: if isAuthed();
+      allow create: if isAuthed()
+        && request.resource.data.creatorId == request.auth.uid
+        && request.auth.uid in request.resource.data.memberIds;
+      /** Existing members may update anything (name, bio, members, etc.). */
+      allow update: if isAuthed()
+        && request.auth.uid in resource.data.memberIds;
+      /**
+       * Join via invite link: add yourself only. Keeps creatorId/joinSlug/name/bio unchanged;
+       * memberIds must be old list + auth uid (at most 3 members).
+       */
+      allow update: if isAuthed()
+        && !(request.auth.uid in resource.data.memberIds)
+        && request.auth.uid in request.resource.data.memberIds
+        && request.resource.data.creatorId == resource.data.creatorId
+        && request.resource.data.joinSlug == resource.data.joinSlug
+        && request.resource.data.name == resource.data.name
+        && request.resource.data.bio == resource.data.bio
+        && request.resource.data.memberIds is list
+        && request.resource.data.memberIds.size() <= 3
+        && request.resource.data.memberIds.size() == resource.data.memberIds.size() + 1
+        && request.resource.data.memberIds.hasAll(resource.data.memberIds);
+      allow delete: if isAuthed()
+        && resource.data.creatorId == request.auth.uid;
+    }
+
+    match /swipes/{swipeId} {
+      allow read: if isAuthed() && (
+        resource.data.fromUserId == request.auth.uid ||
+        resource.data.targetId == request.auth.uid
+      );
+      allow create: if isAuthed()
+        && request.resource.data.fromUserId == request.auth.uid;
+      allow update: if isAuthed()
+        && resource.data.fromUserId == request.auth.uid
+        && request.resource.data.fromUserId == request.auth.uid;
+      allow delete: if false;
+    }
+
+    match /matches/{matchId} {
+      allow read: if isAuthed() && request.auth.uid in resource.data.userIds;
+      allow create: if isAuthed()
+        && request.auth.uid in request.resource.data.userIds
+        && request.resource.data.userIds is list
+        && request.resource.data.userIds.size() == 2;
+      allow update: if isAuthed() && request.auth.uid in resource.data.userIds;
+      allow delete: if isAuthed() && request.auth.uid in resource.data.userIds;
+    }
+
+    match /matches/{matchId}/messages/{msgId} {
+      allow read: if isAuthed() && request.auth.uid in matchUserIds(matchId);
+      allow create: if isAuthed()
+        && request.auth.uid == request.resource.data.senderId
+        && request.auth.uid in matchUserIds(matchId)
+        && request.resource.data.body is string
+        && request.resource.data.body.size() > 0
+        && request.resource.data.body.size() <= 5000;
+      allow update, delete: if false;
+    }
+
+    match /blocks/{blockId} {
+      allow read: if isAuthed() && resource.data.blockerId == request.auth.uid;
+      allow create: if isAuthed()
+        && request.resource.data.blockerId == request.auth.uid;
+      allow delete: if isAuthed() && resource.data.blockerId == request.auth.uid;
+      allow update: if false;
+    }
+
+    match /reports/{reportId} {
+      allow read: if false;
+      allow create: if isAuthed()
+        && request.resource.data.reporterId == request.auth.uid;
+      allow update, delete: if false;
+    }
+  }
+}
