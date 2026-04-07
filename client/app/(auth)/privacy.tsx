@@ -103,12 +103,18 @@ export default function PrivacyPolicyScreen() {
 
         <Section title="Retention and deletion">
           We retain information while your account is active and for a limited period afterward as needed for security,
-          backups, and legal obligations. To request deletion of your account and associated personal data, email{' '}
+          backups, and legal obligations. Signed-in members can use{' '}
+          <ThemedText style={styles.bold}>Settings → Close account</ThemedText> in the app to remove their Firebase
+          Authentication login, delete profile media from our storage, leave stunt groups (or transfer a group you
+          created), delete group listings you created, and remove your profile from Discover by redacting stored
+          profile fields. Some activity may
+          remain in other members’ in-app history (for example, matches or messages they already received) until a future
+          product update addresses deeper erasure. You can also email{' '}
           <ThemedText style={styles.link} onPress={openEmail}>
             {REPORT_EMAIL}
           </ThemedText>
-          . We will verify your request where appropriate and delete or anonymize data except where we must retain it
-          for legal, safety, or dispute-resolution reasons.
+          {' '}for help. We will verify requests where appropriate and delete or anonymize data except where we must
+          retain it for legal, safety, or dispute-resolution reasons.
         </Section>
 
         <Section title="Security">

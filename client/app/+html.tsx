@@ -1,6 +1,7 @@
 // Learn more https://docs.expo.dev/router/reference/static-rendering/#root-html
 
 import { ScrollViewStyleReset } from 'expo-router/html';
+import { MAX_WEB_APP_WIDTH } from '@/constants/layout';
 
 // This file is web-only and used to configure the root HTML for every
 // web page during static rendering.
@@ -13,6 +14,25 @@ export default function Root({ children }: { children: React.ReactNode }) {
         <meta charSet="utf-8" />
         <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
         <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+
+        <style
+          id="letsstunt-app-shell-width"
+          dangerouslySetInnerHTML={{
+            __html: `
+              #root {
+                justify-content: center !important;
+                width: 100%;
+                min-height: 100%;
+              }
+              #root > div {
+                max-width: ${MAX_WEB_APP_WIDTH}px;
+                width: 100%;
+                flex: 1 1 auto;
+                min-height: 100%;
+              }
+            `,
+          }}
+        />
 
         {/* 
           Disable body scrolling on web. This makes ScrollView components work closer to how they do on native. 

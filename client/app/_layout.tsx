@@ -13,9 +13,8 @@ import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { StuntGroupProvider } from '@/context/StuntGroupContext';
 import { useColorScheme } from '@/components/useColorScheme';
 import { asPostAuthHref, hrefFromSegments, hrefWithReturnTo, sanitizeReturnTo } from '@/lib/authRedirect';
+import { MAX_WEB_APP_WIDTH } from '@/constants/layout';
 import { buildNavigationTheme } from '@/lib/navigationTheme';
-
-const MAX_CONTENT_WIDTH = 428;
 
 SplashScreen.preventAutoHideAsync();
 
@@ -38,19 +37,24 @@ function RootLayoutNav() {
   const resolvedScheme = useStableColorScheme();
   const theme = useMemo(() => buildNavigationTheme(resolvedScheme), [resolvedScheme]);
   const { width } = useWindowDimensions();
-  const isWide = width > MAX_CONTENT_WIDTH;
+  const isWideNative = Platform.OS !== 'web' && width > MAX_WEB_APP_WIDTH;
 
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof document === 'undefined') return;
     document.documentElement.style.colorScheme = resolvedScheme;
   }, [resolvedScheme]);
-  const contentStyle = Platform.OS === 'web'
-    ? isWide
-      ? ({ maxWidth: MAX_CONTENT_WIDTH, width: '100%', marginHorizontal: 'auto' } as const)
-      : undefined
-    : isWide
-      ? ({ maxWidth: MAX_CONTENT_WIDTH, alignSelf: 'center' } as const)
-      : undefined;
+  /** Web: always cap width (SSR/static export has no real viewport — CSS in +html.tsx enforces the same). */
+  const contentStyle =
+    Platform.OS === 'web'
+      ? ({
+          maxWidth: MAX_WEB_APP_WIDTH,
+          width: '100%',
+          flex: 1,
+          marginHorizontal: 'auto',
+        } as const)
+      : isWideNative
+        ? ({ maxWidth: MAX_WEB_APP_WIDTH, alignSelf: 'center' } as const)
+        : undefined;
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>

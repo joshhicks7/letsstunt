@@ -1,7 +1,7 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { router } from 'expo-router';
 import React from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text as ThemedText, View as ThemedView } from '@/components/Themed';
 import Colors from '@/constants/Colors';
@@ -11,8 +11,29 @@ import { useColorScheme } from '@/components/useColorScheme';
 import { goBackOrReplace } from '@/lib/goBackOrReplace';
 import { hrefTermsOfService } from '@/lib/legalRoutes';
 
+function confirmDestructive(title: string, message: string, confirmLabel: string): Promise<boolean> {
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    return Promise.resolve(window.confirm(`${title}\n\n${message}`));
+  }
+  return new Promise((resolve) => {
+    Alert.alert(title, message, [
+      { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+      { text: confirmLabel, style: 'destructive', onPress: () => resolve(true) },
+    ]);
+  });
+}
+
+function alertMessage(title: string, message: string) {
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    window.alert(`${title}\n\n${message}`);
+    return;
+  }
+  Alert.alert(title, message);
+}
+
 export default function ProfileSettingsScreen() {
-  const { logout } = useAuth();
+  const { logout, closeAccount } = useAuth();
+  const [closing, setClosing] = React.useState(false);
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? 'light'];
   const insets = useSafeAreaInsets();
@@ -20,6 +41,36 @@ export default function ProfileSettingsScreen() {
   const onLogout = () => {
     logout();
     router.replace('/(auth)/welcome');
+  };
+
+  const onCloseAccount = () => {
+    void (async () => {
+      const ok1 = await confirmDestructive(
+        'Close account',
+        'This permanently deletes your login. We remove your profile photos from storage, take you out of stunt groups, delete group listings you created, and redact your profile data. Matches and past messages may still exist for other members. This cannot be undone.',
+        'Continue',
+      );
+      if (!ok1) return;
+
+      const ok2 = await confirmDestructive(
+        'Are you sure?',
+        'You will be signed out and will need a new account to use LetsStunt again.',
+        'Close my account',
+      );
+      if (!ok2) return;
+
+      setClosing(true);
+      try {
+        const result = await closeAccount();
+        if (!result.ok) {
+          alertMessage('Could not close account', result.message);
+          return;
+        }
+        router.replace('/(auth)/welcome');
+      } finally {
+        setClosing(false);
+      }
+    })();
   };
 
   return (
@@ -34,8 +85,25 @@ export default function ProfileSettingsScreen() {
 
         <ThemedText style={[styles.groupLabel, { color: colors.secondary }]}>Account</ThemedText>
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <SettingsRow icon="sign-out" label="Sign out" colors={colors} onPress={onLogout} isLast />
+          <SettingsRow icon="sign-out" label="Sign out" colors={colors} onPress={onLogout} isLast={false} />
+          <SettingsRow
+            icon="times-circle"
+            label="Close account"
+            colors={colors}
+            onPress={onCloseAccount}
+            destructive
+            disabled={closing}
+            isLast
+          />
         </View>
+        {closing ? (
+          <View style={styles.closingOverlay}>
+            <ActivityIndicator size="large" color={colors.tint} />
+            <ThemedText style={[styles.closingText, { color: colors.secondary }]}>
+              Closing account…
+            </ThemedText>
+          </View>
+        ) : null}
 
         <ThemedText style={[styles.groupLabel, { color: colors.secondary }]}>Safety & support</ThemedText>
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -72,22 +140,32 @@ function SettingsRow({
   colors,
   onPress,
   isLast,
+  destructive,
+  disabled,
 }: {
   icon: React.ComponentProps<typeof FontAwesome>['name'];
   label: string;
   colors: (typeof Colors)['light'];
   onPress: () => void;
   isLast: boolean;
+  destructive?: boolean;
+  disabled?: boolean;
 }) {
+  const accent = destructive ? '#c0392b' : colors.tint;
   return (
     <Pressable
       onPress={onPress}
-      style={[styles.row, !isLast && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }]}
+      disabled={disabled}
+      style={[
+        styles.row,
+        !isLast && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+        disabled && { opacity: 0.5 },
+      ]}
     >
-      <View style={[styles.rowIcon, { backgroundColor: colors.tint + '18' }]}>
-        <FontAwesome name={icon} size={18} color={colors.tint} />
+      <View style={[styles.rowIcon, { backgroundColor: accent + '18' }]}>
+        <FontAwesome name={icon} size={18} color={accent} />
       </View>
-      <ThemedText style={[styles.rowLabel, { color: colors.text }]}>{label}</ThemedText>
+      <ThemedText style={[styles.rowLabel, { color: destructive ? accent : colors.text }]}>{label}</ThemedText>
       <FontAwesome name="chevron-right" size={14} color={colors.secondary} />
     </Pressable>
   );
@@ -127,4 +205,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   rowLabel: { flex: 1, fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.medium },
+  closingOverlay: {
+    marginTop: SPACING.md,
+    paddingVertical: SPACING.lg,
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  closingText: { fontSize: FONT_SIZE.sm },
 });

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   addDoc,
   collection,
@@ -57,6 +57,8 @@ interface SwipeContextValue {
   discoverReady: boolean;
   /** True until the current user sends at least one message in that match (highlight row + nudge to say hi). */
   matchNeedsFirstMessageFromMe: (matchId: string) => boolean;
+  /** Re-subscribe matches + message listeners (e.g. pull-to-refresh on Matches). */
+  refreshMatchFeed: () => Promise<void>;
 }
 
 const SwipeContext = createContext<SwipeContextValue | null>(null);
@@ -78,6 +80,14 @@ export function SwipeProvider({ children }: { children: React.ReactNode }) {
   /** Auth UID — canonical; must match Firestore public profile doc ids. Can be null for a frame while (tabs) mounts before auth guard redirects (e.g. web). */
   const currentUserId = user?.id ?? user?.profile?.id ?? null;
 
+  const matchRefreshWaitersRef = useRef<(() => void)[]>([]);
+  const flushMatchRefreshWaiters = () => {
+    const w = matchRefreshWaitersRef.current;
+    matchRefreshWaitersRef.current = [];
+    w.forEach((fn) => fn());
+  };
+
+  const [matchListenerEpoch, setMatchListenerEpoch] = useState(0);
   const [remoteProfiles, setRemoteProfiles] = useState<StunterProfile[]>([]);
   const [groupListings, setGroupListings] = useState<StuntGroup[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
@@ -94,6 +104,15 @@ export function SwipeProvider({ children }: { children: React.ReactNode }) {
   const clearUnseenMatches = useCallback(() => {
     setUnseenMatchCount(0);
   }, []);
+
+  const refreshMatchFeed = useCallback(async () => {
+    if (!currentUserId) return;
+    await new Promise<void>((resolve) => {
+      matchRefreshWaitersRef.current.push(resolve);
+      setMatchListenerEpoch((e) => e + 1);
+    });
+    await new Promise<void>((r) => setTimeout(r, 150));
+  }, [currentUserId]);
 
   const allProfiles = useMemo(() => {
     const list = [...remoteProfiles];
@@ -172,7 +191,6 @@ export function SwipeProvider({ children }: { children: React.ReactNode }) {
     if (!currentUserId) {
       setRemoteProfiles([]);
       setGroupListings([]);
-      setMatches([]);
       setMessages([]);
       setOutSwipeTargets(new Map());
       setBlockedTargetIds(new Set());
@@ -186,7 +204,6 @@ export function SwipeProvider({ children }: { children: React.ReactNode }) {
     } catch {
       setRemoteProfiles([]);
       setGroupListings([]);
-      setMatches([]);
       setMessages([]);
       setOutSwipeTargets(new Map());
       setBlockedTargetIds(new Set());
@@ -218,7 +235,11 @@ export function SwipeProvider({ children }: { children: React.ReactNode }) {
         const list: StunterProfile[] = [];
         snap.forEach((d) => {
           if (d.id === currentUserId) return;
-          const p = profileFromFirestore(d.data(), d.id, '');
+          const pdata = d.data();
+          if (pdata && typeof pdata === 'object' && 'accountClosedAt' in pdata && pdata.accountClosedAt != null) {
+            return;
+          }
+          const p = profileFromFirestore(pdata, d.id, '');
           if (p) {
             p.location = stripLocationToCityRegionOnly(p.location);
             list.push(p);
@@ -270,6 +291,31 @@ export function SwipeProvider({ children }: { children: React.ReactNode }) {
       },
     );
 
+    return () => {
+      unsubPublic();
+      unsubListings();
+      unsubSwipes();
+      unsubBlocks();
+    };
+  }, [currentUserId]);
+
+  /** Matches list: separate effect so pull-to-refresh can re-subscribe without resetting Discover listeners. */
+  useEffect(() => {
+    if (!currentUserId) {
+      setMatches([]);
+      flushMatchRefreshWaiters();
+      return;
+    }
+
+    let db: ReturnType<typeof getFirestoreDb>;
+    try {
+      db = getFirestoreDb();
+    } catch {
+      setMatches([]);
+      flushMatchRefreshWaiters();
+      return;
+    }
+
     const unsubMatches = onSnapshot(
       query(
         collection(db, 'matches'),
@@ -291,17 +337,19 @@ export function SwipeProvider({ children }: { children: React.ReactNode }) {
           });
         });
         setMatches(list);
+        if (matchRefreshWaitersRef.current.length > 0) {
+          flushMatchRefreshWaiters();
+        }
+      },
+      () => {
+        flushMatchRefreshWaiters();
       },
     );
 
     return () => {
-      unsubPublic();
-      unsubListings();
-      unsubSwipes();
-      unsubBlocks();
       unsubMatches();
     };
-  }, [currentUserId]);
+  }, [currentUserId, matchListenerEpoch]);
 
   const matchIdsKey = matchesFiltered.map((m) => m.id).sort().join(',');
 
@@ -350,7 +398,7 @@ export function SwipeProvider({ children }: { children: React.ReactNode }) {
     }
 
     return () => unsubs.forEach((u) => u());
-  }, [currentUserId, matchIdsKey]);
+  }, [currentUserId, matchIdsKey, matchListenerEpoch]);
 
   const resolveSwipeTargetType = useCallback(
     (entityId: string): 'profile' | 'group' | null => {
@@ -549,6 +597,7 @@ export function SwipeProvider({ children }: { children: React.ReactNode }) {
       getMatchById,
       discoverReady,
       matchNeedsFirstMessageFromMe,
+      refreshMatchFeed,
     }),
     [
       discoverStack,
@@ -569,6 +618,7 @@ export function SwipeProvider({ children }: { children: React.ReactNode }) {
       getMatchById,
       discoverReady,
       matchNeedsFirstMessageFromMe,
+      refreshMatchFeed,
     ],
   );
 

@@ -1,8 +1,8 @@
 import { useFocusEffect } from '@react-navigation/native';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { router } from 'expo-router';
-import React, { useCallback, useMemo } from 'react';
-import { Alert, FlatList, Image, ListRenderItem, Pressable, StyleSheet, View } from 'react-native';
+import React, { useCallback, useMemo, useState } from 'react';
+import { Alert, FlatList, Image, ListRenderItem, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text as ThemedText, View as ThemedView } from '@/components/Themed';
 import { useColorScheme } from '@/components/useColorScheme';
@@ -20,9 +20,19 @@ export default function MatchesScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const uid = user?.id ?? user?.profile?.id ?? null;
-  const { matches, getMatchProfile, matchNeedsFirstMessageFromMe } = useSwipe();
+  const { matches, getMatchProfile, matchNeedsFirstMessageFromMe, refreshMatchFeed } = useSwipe();
+  const [refreshing, setRefreshing] = useState(false);
 
   const matchesKey = useMemo(() => matches.map((m) => m.id).sort().join('|'), [matches]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await refreshMatchFeed();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refreshMatchFeed]);
 
   useFocusEffect(
     useCallback(() => {
@@ -125,6 +135,14 @@ export default function MatchesScreen() {
         data={matches}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => void onRefresh()}
+            tintColor={colors.tint}
+            colors={[colors.tint]}
+          />
+        }
         contentContainerStyle={[styles.list, matches.length === 0 && styles.listEmptyCentered]}
         ListEmptyComponent={
           <View style={styles.emptyBlock}>

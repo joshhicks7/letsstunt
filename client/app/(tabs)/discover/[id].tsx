@@ -1,6 +1,6 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useLocalSearchParams } from 'expo-router';
-import React from 'react';
+import React, { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -19,6 +19,8 @@ import { SKILL_TAG_LABELS } from '@/constants/skillTags';
 import { SPACING, FONT_SIZE, PROFILE_COVER_CAROUSEL_HEIGHT } from '@/constants/Theme';
 import { GroupDetailHero } from '@/components/GroupDetailHero';
 import { ProfileCoverCarousel } from '@/components/ProfileCoverCarousel';
+import { ReportModal } from '@/components/ReportModal';
+import { useAuth } from '@/context/AuthContext';
 import { goBackOrReplace } from '@/lib/goBackOrReplace';
 import { rosterProfilesForGroup } from '@/lib/groupRoster';
 import { useSwipe } from '@/context/SwipeContext';
@@ -33,7 +35,10 @@ export default function DiscoverProfileDetailScreen() {
   const insets = useSafeAreaInsets();
   const isDark = colorScheme === 'dark';
   const border = colors.border;
-  const { allProfiles, getGroupListingById } = useSwipe();
+  const { user } = useAuth();
+  const viewerId = user?.id ?? user?.profile?.id ?? null;
+  const { allProfiles, getGroupListingById, report, pass, block } = useSwipe();
+  const [reportModalVisible, setReportModalVisible] = useState(false);
   const { width: windowWidth } = useWindowDimensions();
 
   const profile = entityId ? allProfiles.find((p) => p.id === entityId) : undefined;
@@ -154,6 +159,7 @@ export default function DiscoverProfileDetailScreen() {
   }
 
   const p = profile!;
+  const isOwnProfile = Boolean(viewerId && p.id === viewerId);
   const age = p.birthday ? ageFromISOBirthday(p.birthday) : null;
   const ig = p.instagramHandle?.trim()
     ? p.instagramHandle.startsWith('@')
@@ -169,6 +175,19 @@ export default function DiscoverProfileDetailScreen() {
     ? `${p.location.city}${p.location.region ? `, ${p.location.region}` : ''}`
     : null;
 
+  const openReport = () => setReportModalVisible(true);
+  const closeReport = () => setReportModalVisible(false);
+  const handleReportProfile = (profileId: string, reason: string, details?: string) => {
+    report(profileId, reason, details);
+    pass(profileId);
+    goBackOrReplace('/(tabs)/discover');
+  };
+  const handleBlockProfile = (profileId: string) => {
+    block(profileId);
+    pass(profileId);
+    goBackOrReplace('/(tabs)/discover');
+  };
+
   return (
     <ThemedView style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.detailHeader}>
@@ -183,7 +202,19 @@ export default function DiscoverProfileDetailScreen() {
             ) : null}
           </ThemedText>
         </View>
-        <View style={styles.detailHeaderSpacer} />
+        {!isOwnProfile ? (
+          <Pressable
+            onPress={openReport}
+            style={styles.detailHeaderAction}
+            hitSlop={12}
+            accessibilityRole="button"
+            accessibilityLabel="Report or block"
+          >
+            <FontAwesome name="flag-o" size={22} color={colors.secondary} />
+          </Pressable>
+        ) : (
+          <View style={styles.detailHeaderSpacer} />
+        )}
       </View>
       <View style={[styles.headerRule, { backgroundColor: border, marginHorizontal: SPACING.lg }]} />
       <ScrollView
@@ -297,6 +328,18 @@ export default function DiscoverProfileDetailScreen() {
 
         <View style={{ height: SPACING.xxl }} />
       </ScrollView>
+
+      {!isOwnProfile ? (
+        <ReportModal
+          visible={reportModalVisible}
+          onClose={closeReport}
+          profileDisplayName={p.displayName}
+          profileId={p.id}
+          onReport={handleReportProfile}
+          onBlock={handleBlockProfile}
+          showBlockOption
+        />
+      ) : null}
     </ThemedView>
   );
 }
@@ -325,6 +368,12 @@ const styles = StyleSheet.create({
   detailHeaderTitle: { fontSize: FONT_SIZE.lg, fontWeight: '700' },
   detailHeaderAge: { fontSize: FONT_SIZE.md, fontWeight: '600' },
   detailHeaderSpacer: { width: 44 },
+  detailHeaderAction: {
+    width: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING.sm,
+  },
   headerRule: {
     height: StyleSheet.hairlineWidth,
     marginBottom: SPACING.sm,

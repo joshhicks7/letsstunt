@@ -2,7 +2,7 @@ import FontAwesome from '@expo/vector-icons/FontAwesome';
 import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, Image, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BirthdayPickerField } from '@/components/BirthdayPickerField';
 import { LocationSearchField } from '@/components/LocationSearchField';
@@ -21,6 +21,7 @@ import { asPostAuthHref, sanitizeReturnTo } from '@/lib/authRedirect';
 import { goBackOrReplace } from '@/lib/goBackOrReplace';
 import { ageFromISOBirthday, todayISODate } from '@/lib/dates';
 import { locationFromAreaText } from '@/lib/locationDraft';
+import { ensureProfileMediaUploaded } from '@/lib/profileMediaUpload';
 import { id as newId } from '@/data/mockData';
 
 const defaultDraft: OnboardingDraft = {
@@ -47,7 +48,7 @@ const STEP_TITLES = ['About you', 'Your roles', 'Skills & experience', 'Photos']
 const SKIPPABLE_MIDDLE_STEP = (s: number) => s === 2;
 
 export default function OnboardingScreen() {
-  const { completeOnboarding } = useAuth();
+  const { completeOnboarding, user } = useAuth();
   const { returnTo } = useLocalSearchParams<{ returnTo?: string | string[] }>();
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? 'light'];
@@ -58,6 +59,7 @@ export default function OnboardingScreen() {
     birthday: todayISODate(),
   }));
   const [step, setStep] = useState(0);
+  const [finishing, setFinishing] = useState(false);
 
   useEffect(() => {
     if (city != null || region != null || (lat != null && lng != null)) {
@@ -98,6 +100,7 @@ export default function OnboardingScreen() {
   };
 
   const addPhoto = async () => {
+    if (finishing) return;
     if (draft.media.length >= MAX_MEDIA) return;
     const { granted } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!granted) return;
@@ -165,17 +168,28 @@ export default function OnboardingScreen() {
 
   const handleComplete = async () => {
     if (!draft.primaryRole || age == null || age < MIN_AGE) return;
+    const uid = user?.id ?? user?.profile?.id;
+    if (!uid) {
+      Alert.alert('Session', 'Please sign in again.');
+      return;
+    }
+    setFinishing(true);
     try {
+      const images = draft.media.filter((m) => m.type === 'image');
+      const mediaUploaded = await ensureProfileMediaUploaded(uid, images);
       await completeOnboarding({
         ...draft,
-        media: draft.media.filter((m) => m.type === 'image'),
+        media: mediaUploaded,
         instagramHandle: draft.instagramHandle?.replace(/^@/, '').trim() || null,
         location: draft.location ?? (city || lat != null ? { city: city ?? undefined, country: 'USA', lat: lat ?? undefined, lng: lng ?? undefined } : null),
       });
       const next = sanitizeReturnTo(returnTo) ?? '/(tabs)/discover';
       router.replace(asPostAuthHref(next));
-    } catch {
-      Alert.alert('Profile', 'Could not save your profile. Check your connection and try again.');
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : '';
+      Alert.alert('Profile', msg.trim() || 'Could not save your profile. Check your connection and try again.');
+    } finally {
+      setFinishing(false);
     }
   };
 
@@ -183,7 +197,8 @@ export default function OnboardingScreen() {
     draft.displayName.trim().length > 0 &&
     draft.primaryRole != null &&
     age != null &&
-    age >= MIN_AGE;
+    age >= MIN_AGE &&
+    !finishing;
 
   const step0Valid =
     draft.displayName.trim().length > 0 && draft.birthday.length > 0 && age != null && age >= MIN_AGE && !ageBlocked;
@@ -209,7 +224,7 @@ export default function OnboardingScreen() {
       <ThemedText style={styles.label}>Display name *</ThemedText>
       <TextInput
         style={[styles.input, { backgroundColor: colors.card, borderColor: colors.border, color: colors.text }]}
-        placeholder="How you want to appear"
+        placeholder="What's your name?"
         placeholderTextColor={colors.secondary}
         value={draft.displayName}
         onChangeText={(t) => setDraft((p) => ({ ...p, displayName: t }))}
@@ -466,7 +481,7 @@ export default function OnboardingScreen() {
           <View style={styles.footerRow}>
             <Pressable
               style={[styles.skipBtn, { borderColor: colors.border }]}
-              onPress={handleComplete}
+              onPress={() => void handleComplete()}
               disabled={!canComplete}
               accessibilityRole="button"
               accessibilityLabel="Finish without adding photos"
@@ -475,12 +490,16 @@ export default function OnboardingScreen() {
             </Pressable>
             <Pressable
               style={[styles.nextBtn, styles.nextBtnFlex, { backgroundColor: canComplete ? colors.tint : colors.border }]}
-              onPress={handleComplete}
+              onPress={() => void handleComplete()}
               disabled={!canComplete}
             >
-              <ThemedText style={[styles.nextBtnText, styles.saveBtnTextShrink]} numberOfLines={2}>
-                Save & start discovering
-              </ThemedText>
+              {finishing ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <ThemedText style={[styles.nextBtnText, styles.saveBtnTextShrink]} numberOfLines={2}>
+                  Save & start discovering
+                </ThemedText>
+              )}
             </Pressable>
           </View>
         )}

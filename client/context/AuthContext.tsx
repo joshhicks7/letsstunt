@@ -24,10 +24,12 @@ import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import type { AuthUser, OnboardingDraft, StunterProfile } from '@/types';
 import { mergePrimaryAndSecondary } from '@/constants/positions';
 import { now } from '@/data/mockData';
+import { callDeleteMyAccount } from '@/lib/callDeleteMyAccount';
 import { getFirestoreDb } from '@/lib/firebaseApp';
 import { getFirebaseAuth } from '@/lib/getFirebaseAuth';
 import { profileFromFirestore, serializeProfile } from '@/lib/firestoreProfile';
 import { mapAuthError } from '@/lib/mapAuthError';
+import { mapDeleteAccountError } from '@/lib/mapDeleteAccountError';
 import { syncPublicProfileDoc } from '@/lib/syncPublicProfile';
 
 interface AuthContextValue {
@@ -43,6 +45,11 @@ interface AuthContextValue {
   signInWithGoogleFromIdToken: (idToken: string) => Promise<{ onboardingComplete: boolean }>;
   /** Web: after Google popup completes, sync profile from the server (redirect flows use getRedirectResult in the provider). */
   finalizeGoogleUser: (user: User) => Promise<{ onboardingComplete: boolean }>;
+  /**
+   * Close this account for good: server removes profile media, cleans squads/listings, redacts Firestore,
+   * then deletes the Firebase Auth user. Callers should navigate to welcome after `ok`.
+   */
+  closeAccount: () => Promise<{ ok: true } | { ok: false; message: string }>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -148,6 +155,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     const data = snap.data();
+    if (data.accountClosedAt != null) {
+      try {
+        await signOut(getFirebaseAuth());
+      } catch {
+        /* ignore */
+      }
+      setUser(null);
+      setOnboardingComplete(false);
+      return { onboardingComplete: false };
+    }
     const complete = data.onboardingComplete === true;
     const parsed = profileFromFirestore(data.profile, fbUser.uid, email);
     if (!parsed) {
@@ -251,6 +268,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const closeAccount = useCallback(async () => {
+    try {
+      await callDeleteMyAccount();
+    } catch (e: unknown) {
+      return { ok: false as const, message: mapDeleteAccountError(e) };
+    }
+    try {
+      await signOut(getFirebaseAuth());
+    } catch {
+      /* auth user may already be gone server-side */
+    }
+    setUser(null);
+    setOnboardingComplete(false);
+    return { ok: true as const };
+  }, []);
+
   const completeOnboarding = useCallback(
     async (draft: OnboardingDraft) => {
       const auth = getFirebaseAuth();
@@ -321,6 +354,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       updateProfile,
       signInWithGoogleFromIdToken,
       finalizeGoogleUser,
+      closeAccount,
     }),
     [
       authReady,
@@ -329,6 +363,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signUp,
       login,
       logout,
+      closeAccount,
       completeOnboarding,
       updateProfile,
       signInWithGoogleFromIdToken,

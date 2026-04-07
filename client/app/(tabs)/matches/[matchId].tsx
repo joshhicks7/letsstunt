@@ -7,6 +7,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  RefreshControl,
   StyleSheet,
   TextInput,
   View,
@@ -34,13 +35,24 @@ export default function MatchChatScreen() {
     block,
     report,
     matchNeedsFirstMessageFromMe,
+    refreshMatchFeed,
   } = useSwipe();
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? 'light'];
   const insets = useSafeAreaInsets();
   const [draft, setDraft] = useState('');
   const [safetyOpen, setSafetyOpen] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const listRef = useRef<FlatList<ChatMessage>>(null);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await refreshMatchFeed();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refreshMatchFeed]);
 
   const match = useMemo(() => (id ? getMatchById(id) : undefined), [id, getMatchById]);
   const profile = match ? getMatchProfile(match) : undefined;
@@ -158,6 +170,14 @@ export default function MatchChatScreen() {
           data={messages}
           keyExtractor={(m) => m.id}
           contentContainerStyle={[styles.thread, { paddingBottom: SPACING.md }]}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => void onRefresh()}
+              tintColor={colors.tint}
+              colors={[colors.tint]}
+            />
+          }
           onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
           ListEmptyComponent={
             <ThemedText style={[styles.emptyHint, { color: colors.secondary }]}>

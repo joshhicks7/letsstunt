@@ -2,6 +2,7 @@ import FontAwesome from '@expo/vector-icons/FontAwesome';
 import * as ImagePicker from 'expo-image-picker';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Image,
   KeyboardAvoidingView,
@@ -27,6 +28,7 @@ import type { PositionType, SkillTag, StunterProfile } from '@/types';
 import { useAuth } from '@/context/AuthContext';
 import { useColorScheme } from '@/components/useColorScheme';
 import { goBackOrReplace } from '@/lib/goBackOrReplace';
+import { ensureProfileMediaUploaded } from '@/lib/profileMediaUpload';
 import { useLocation } from '@/hooks/useLocation';
 import { ageFromISOBirthday, todayISODate } from '@/lib/dates';
 import { locationFromAreaText } from '@/lib/locationDraft';
@@ -96,6 +98,7 @@ export default function ProfileEditScreen() {
   const [media, setMedia] = useState<StunterProfile['media']>(() =>
     (profile?.media ?? []).filter((m) => m.type === 'image'),
   );
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (profile) {
@@ -177,6 +180,7 @@ export default function ProfileEditScreen() {
   }, [refetchLocation, openAppSettings]);
 
   const addGalleryItem = useCallback(async () => {
+    if (saving) return;
     if (media.length >= MAX_PROFILE_MEDIA) return;
     const { granted } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!granted) return;
@@ -189,7 +193,7 @@ export default function ProfileEditScreen() {
     setMedia((prev) =>
       [...prev, { id: newMediaId('m'), uri, type: 'image' as const }].slice(0, MAX_PROFILE_MEDIA),
     );
-  }, [media.length]);
+  }, [media.length, saving]);
 
   const removeMediaAt = useCallback((index: number) => {
     setMedia((prev) => prev.filter((_, i) => i !== index));
@@ -199,9 +203,15 @@ export default function ProfileEditScreen() {
   const ageError = birthday.length > 0 && age != null && age < MIN_AGE ? UNDERAGE_MESSAGE : null;
 
   const handleSave = async () => {
+    if (saving) return;
     if (!primaryRole || age == null || age < MIN_AGE) return;
+    const uid = user?.id ?? user?.profile?.id;
+    if (!uid) return;
     const positions = mergePrimaryAndSecondary(primaryRole, secondaryRoles);
+    setSaving(true);
     try {
+      const images = media.filter((m) => m.type === 'image');
+      const mediaUploaded = await ensureProfileMediaUploaded(uid, images);
       await updateProfile({
         displayName: displayName.trim(),
         birthday,
@@ -216,15 +226,18 @@ export default function ProfileEditScreen() {
         location: location ?? (city || lat != null ? { city: city ?? undefined, country: 'USA', lat: lat ?? undefined, lng: lng ?? undefined } : null),
         teamGym: teamGym.trim() || null,
         bio: bio.trim(),
-        media: media.filter((m) => m.type === 'image'),
+        media: mediaUploaded,
       });
       goBackOrReplace('/(tabs)/profile');
-    } catch {
-      Alert.alert('Profile', 'Could not save changes. Try again.');
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : '';
+      Alert.alert('Profile', msg.trim() || 'Could not save changes. Check your connection and try again.');
+    } finally {
+      setSaving(false);
     }
   };
 
-  const canSave = displayName.trim().length > 0 && primaryRole != null && age != null && age >= MIN_AGE;
+  const saveEnabled = displayName.trim().length > 0 && primaryRole != null && age != null && age >= MIN_AGE;
   const border = colors.border;
 
   const inlineInput = {
@@ -522,11 +535,15 @@ export default function ProfileEditScreen() {
           ]}
         >
           <Pressable
-            style={[styles.saveBtn, { backgroundColor: canSave ? colors.tint : colors.border }]}
-            onPress={handleSave}
-            disabled={!canSave}
+            style={[styles.saveBtn, { backgroundColor: saveEnabled ? colors.tint : colors.border }]}
+            onPress={() => void handleSave()}
+            disabled={!saveEnabled || saving}
           >
-            <ThemedText style={styles.saveBtnText}>Save changes</ThemedText>
+            {saving ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <ThemedText style={styles.saveBtnText}>Save changes</ThemedText>
+            )}
           </Pressable>
         </View>
       </KeyboardAvoidingView>
