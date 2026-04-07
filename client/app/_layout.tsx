@@ -6,7 +6,7 @@ import { useFonts } from 'expo-font';
 import { Stack, useGlobalSearchParams, usePathname, useRouter, useSegments, useRootNavigationState } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Platform, useWindowDimensions, View } from 'react-native';
 import 'react-native-reanimated';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
