@@ -1,0 +1,57 @@
+{
+  "expo": {
+    "name": "LetsStunt",
+    "slug": "letsstunt",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "letsstunt",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/images/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#5B4B8A"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Find flyers and stunt partners nearby.",
+        "NSPhotoLibraryUsageDescription": "Add profile photos and stunt media to your athlete profile."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#5B4B8A"
+      },
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION"
+      ]
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/images/favicon.png",
+      "name": "LetsStunt",
+      "shortName": "LetsStunt",
+      "description": "Find flyers, bases, and stunt partners nearby.",
+      "themeColor": "#5B4B8A",
+      "backgroundColor": "#5B4B8A",
+      "display": "standalone",
+      "startUrl": "/",
+      "orientation": "portrait",
+      "lang": "en"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-location",
+      "@react-native-community/datetimepicker",
+      "expo-web-browser"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
