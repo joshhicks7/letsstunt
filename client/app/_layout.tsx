@@ -35,7 +35,7 @@ export default function RootLayout() {
 }
 
 function RootLayoutNav() {
-  const resolvedScheme = useColorScheme();
+  const resolvedScheme = useStableColorScheme();
   const theme = useMemo(() => buildNavigationTheme(resolvedScheme), [resolvedScheme]);
   const { width } = useWindowDimensions();
   const isWide = width > MAX_CONTENT_WIDTH;
@@ -143,4 +143,34 @@ function AuthRouteGuard() {
   }, [authReady, user, onboardingComplete, segments, pathname, rootNav?.key, router, returnToKey, returnToParam]);
 
   return null;
+}
+
+function useStableColorScheme() {
+  const systemScheme = useColorScheme();
+
+  const [webScheme, setWebScheme] = useState<'light' | 'dark'>(() => {
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      return window.matchMedia('(prefers-color-scheme: dark)').matches
+        ? 'dark'
+        : 'light';
+    }
+    return 'light';
+  });
+
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+
+    const listener = (e: MediaQueryListEvent) => {
+      setWebScheme(e.matches ? 'dark' : 'light');
+    };
+
+    media.addEventListener('change', listener);
+    return () => media.removeEventListener('change', listener);
+  }, []);
+
+  return Platform.OS === 'web'
+    ? webScheme
+    : systemScheme ?? 'light';
 }
