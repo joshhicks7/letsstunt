@@ -5,15 +5,16 @@ import { useAuth } from '@/context/AuthContext';
 
 export default function Index() {
   const { authReady, user, onboardingComplete } = useAuth();
-useEffect(() => {
-    if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/firebase-messaging-sw.js')
-          .then(() => console.log('Service Worker registered'))
-          .catch(err => console.error('SW registration failed:', err));
-      });
-    }
-  }, []);
+  useEffect(() => {
+      if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/firebase-messaging-sw.js')
+            .then(() => console.log('Service Worker registered'))
+            .catch(err => console.error('SW registration failed:', err));
+        });
+      }
+    }, []);
+
   useEffect(() => {
     if (!authReady) return;
     const t = setTimeout(() => {

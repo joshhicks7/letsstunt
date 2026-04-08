@@ -1,17 +1,28 @@
 'use client';
 
+/**
+ * SwipeContext centralizes Firestore realtime data and actions for **Discover** (profiles, group listings,
+ * swipes, blocks) and **Matches** (match list + per-thread messages). The name reflects the swipe deck,
+ * but the scope is the whole social feed + chat — see also exported `DiscoverAndMatchesProvider` alias.
+ */
+
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import type { QueryDocumentSnapshot, QuerySnapshot } from 'firebase/firestore';
 import {
   addDoc,
   collection,
   deleteDoc,
   doc,
+  documentId,
   getDocs,
+  getDocsFromServer,
+  limit,
   onSnapshot,
   orderBy,
   query,
   serverTimestamp,
   setDoc,
+  startAfter,
   where,
 } from 'firebase/firestore';
 import type { ChatMessage, DiscoverEntry, Match, StunterProfile, StuntGroup } from '@/types';
@@ -31,9 +42,50 @@ function blockDocId(blockerId: string, blockedId: string): string {
   return `${blockerId}_${blockedId}`;
 }
 
-function sortedPair(a: string, b: string): [string, string] {
-  return a < b ? [a, b] : [b, a];
+function mapPublicProfileDoc(
+  d: QueryDocumentSnapshot,
+  currentUserId: string,
+): StunterProfile | null {
+  if (d.id === currentUserId) return null;
+  const pdata = d.data();
+  if (pdata && typeof pdata === 'object' && 'accountClosedAt' in pdata && pdata.accountClosedAt != null) {
+    return null;
+  }
+  const p = profileFromFirestore(pdata, d.id, '');
+  if (!p) return null;
+  p.location = stripLocationToCityRegionOnly(p.location);
+  return p;
 }
+
+function mapGroupListingDoc(d: QueryDocumentSnapshot): StuntGroup | null {
+  const g = groupListingFromFirestore(d.data(), d.id);
+  if (!g) return null;
+  return { ...g, location: stripGroupLocationToCityRegionOnly(g.location) };
+}
+
+/** Page size for discover queries (profiles by `updatedAt`, groups by doc id). */
+const DISCOVER_PAGE_SIZE = 50;
+/** Recent messages loaded per match thread (newest first in query, sorted ascending in state). */
+const MESSAGES_PAGE_SIZE = 100;
+
+function matchesFromMatchQuerySnap(snap: QuerySnapshot): Match[] {
+  const list: Match[] = [];
+  snap.forEach((d) => {
+    const x = d.data();
+    const u = x.userIds;
+    if (!Array.isArray(u) || u.length !== 2 || typeof u[0] !== 'string' || typeof u[1] !== 'string') {
+      return;
+    }
+    list.push({
+      id: d.id,
+      profileIds: [u[0], u[1]],
+      matchedAt: timestampToIso(x.matchedAt),
+    });
+  });
+  return list;
+}
+
+const REFRESH_MATCH_LISTENER_TIMEOUT_MS = 8000;
 
 interface SwipeContextValue {
   discoverStack: DiscoverEntry[];
@@ -57,8 +109,15 @@ interface SwipeContextValue {
   discoverReady: boolean;
   /** True until the current user sends at least one message in that match (highlight row + nudge to say hi). */
   matchNeedsFirstMessageFromMe: (matchId: string) => boolean;
-  /** Re-subscribe matches + message listeners (e.g. pull-to-refresh on Matches). */
-  refreshMatchFeed: () => Promise<void>;
+  /**
+   * Pull-to-refresh: read matches (and optionally one thread’s messages) from the **server**, then
+   * re-attach listeners so live updates resume.
+   */
+  refreshMatchFeed: (options?: { threadMatchId?: string }) => Promise<void>;
+  /** Fetch next page of discover candidates (profiles and/or group listings). */
+  loadMoreDiscover: () => Promise<void>;
+  /** True while either profiles or group listings may have more pages to load. */
+  hasMoreDiscover: boolean;
 }
 
 const SwipeContext = createContext<SwipeContextValue | null>(null);
@@ -75,6 +134,7 @@ function resolveAsProfile(
   return undefined;
 }
 
+/** Provides Discover feed state, matches, messages, and related Firestore actions. */
 export function SwipeProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   /** Auth UID — canonical; must match Firestore public profile doc ids. Can be null for a frame while (tabs) mounts before auth guard redirects (e.g. web). */
@@ -88,8 +148,16 @@ export function SwipeProvider({ children }: { children: React.ReactNode }) {
   };
 
   const [matchListenerEpoch, setMatchListenerEpoch] = useState(0);
-  const [remoteProfiles, setRemoteProfiles] = useState<StunterProfile[]>([]);
-  const [groupListings, setGroupListings] = useState<StuntGroup[]>([]);
+  const [profileFirstPage, setProfileFirstPage] = useState<StunterProfile[]>([]);
+  const [extraDiscoverProfiles, setExtraDiscoverProfiles] = useState<StunterProfile[]>([]);
+  const [groupFirstPage, setGroupFirstPage] = useState<StuntGroup[]>([]);
+  const [extraGroupListings, setExtraGroupListings] = useState<StuntGroup[]>([]);
+  const lastProfilePageDocRef = useRef<QueryDocumentSnapshot | null>(null);
+  const lastGroupPageDocRef = useRef<QueryDocumentSnapshot | null>(null);
+  const [profilesDiscoverHasMore, setProfilesDiscoverHasMore] = useState(true);
+  const [groupsDiscoverHasMore, setGroupsDiscoverHasMore] = useState(true);
+  const prevMatchIdsRef = useRef<Set<string>>(new Set());
+  const matchesHadFirstSnapshotRef = useRef(false);
   const [matches, setMatches] = useState<Match[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [outSwipeTargets, setOutSwipeTargets] = useState<Map<string, 'like' | 'pass'>>(new Map());
@@ -97,22 +165,165 @@ export function SwipeProvider({ children }: { children: React.ReactNode }) {
   const [unseenMatchCount, setUnseenMatchCount] = useState(0);
   const [discoverReady, setDiscoverReady] = useState(false);
 
+  const remoteProfiles = useMemo(() => {
+    const map = new Map<string, StunterProfile>();
+    for (const p of profileFirstPage) map.set(p.id, p);
+    for (const p of extraDiscoverProfiles) {
+      if (!map.has(p.id)) map.set(p.id, p);
+    }
+    return [...map.values()];
+  }, [profileFirstPage, extraDiscoverProfiles]);
+
+  const groupListings = useMemo(() => {
+    const map = new Map<string, StuntGroup>();
+    for (const g of groupFirstPage) map.set(g.id, g);
+    for (const g of extraGroupListings) {
+      if (!map.has(g.id)) map.set(g.id, g);
+    }
+    return [...map.values()];
+  }, [groupFirstPage, extraGroupListings]);
+
   const groupMap = useMemo(() => new Map(groupListings.map((g) => [g.id, g])), [groupListings]);
   const profileIdSet = useMemo(() => new Set(remoteProfiles.map((p) => p.id)), [remoteProfiles]);
   const groupIdSet = useMemo(() => new Set(groupListings.map((g) => g.id)), [groupListings]);
+
+  const hasMoreDiscover = profilesDiscoverHasMore || groupsDiscoverHasMore;
 
   const clearUnseenMatches = useCallback(() => {
     setUnseenMatchCount(0);
   }, []);
 
-  const refreshMatchFeed = useCallback(async () => {
+  const refreshMatchFeed = useCallback(async (options?: { threadMatchId?: string }) => {
     if (!currentUserId) return;
-    await new Promise<void>((resolve) => {
+
+    let db: ReturnType<typeof getFirestoreDb>;
+    try {
+      db = getFirestoreDb();
+    } catch {
+      return;
+    }
+
+    const matchesQuery = query(
+      collection(db, 'matches'),
+      where('userIds', 'array-contains', currentUserId),
+      orderBy('matchedAt', 'desc'),
+    );
+
+    try {
+      const serverSnap = await getDocsFromServer(matchesQuery);
+      setMatches(matchesFromMatchQuerySnap(serverSnap));
+    } catch {
+      /* offline, permission, or transient error — listener may still update later */
+    }
+
+    const threadId = options?.threadMatchId?.trim();
+    if (threadId) {
+      try {
+        const msgQ = query(
+          collection(db, 'matches', threadId, 'messages'),
+          orderBy('createdAt', 'desc'),
+          limit(MESSAGES_PAGE_SIZE),
+        );
+        const msgSnap = await getDocsFromServer(msgQ);
+        const add: ChatMessage[] = [];
+        msgSnap.forEach((d) => {
+          const x = d.data();
+          if (typeof x.senderId !== 'string' || typeof x.body !== 'string') return;
+          add.push({
+            id: d.id,
+            matchId: threadId,
+            senderId: x.senderId,
+            body: x.body,
+            createdAt: timestampToIso(x.createdAt),
+          });
+        });
+        add.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+        setMessages((prev) => {
+          const rest = prev.filter((x) => x.matchId !== threadId);
+          return [...rest, ...add].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+        });
+      } catch {
+        /* ignore */
+      }
+    }
+
+    const listenerReady = new Promise<void>((resolve) => {
       matchRefreshWaitersRef.current.push(resolve);
       setMatchListenerEpoch((e) => e + 1);
     });
+    const timeout = new Promise<void>((resolve) => {
+      setTimeout(resolve, REFRESH_MATCH_LISTENER_TIMEOUT_MS);
+    });
+    await Promise.race([listenerReady, timeout]);
+    flushMatchRefreshWaiters();
     await new Promise<void>((r) => setTimeout(r, 150));
   }, [currentUserId]);
+
+  const loadMoreDiscover = useCallback(async () => {
+    if (!currentUserId) return;
+    let db: ReturnType<typeof getFirestoreDb>;
+    try {
+      db = getFirestoreDb();
+    } catch {
+      return;
+    }
+    const uid = currentUserId;
+
+    await Promise.all([
+      (async () => {
+        if (!profilesDiscoverHasMore || !lastProfilePageDocRef.current) return;
+        const snap = await getDocs(
+          query(
+            collection(db, 'publicProfiles'),
+            orderBy('updatedAt', 'desc'),
+            startAfter(lastProfilePageDocRef.current),
+            limit(DISCOVER_PAGE_SIZE),
+          ),
+        );
+        if (snap.empty) {
+          setProfilesDiscoverHasMore(false);
+          lastProfilePageDocRef.current = null;
+          return;
+        }
+        const list: StunterProfile[] = [];
+        snap.forEach((d) => {
+          const p = mapPublicProfileDoc(d, uid);
+          if (p) list.push(p);
+        });
+        setExtraDiscoverProfiles((prev) => [...prev, ...list]);
+        lastProfilePageDocRef.current = snap.docs[snap.docs.length - 1] ?? null;
+        if (snap.docs.length < DISCOVER_PAGE_SIZE) {
+          setProfilesDiscoverHasMore(false);
+        }
+      })(),
+      (async () => {
+        if (!groupsDiscoverHasMore || !lastGroupPageDocRef.current) return;
+        const snap = await getDocs(
+          query(
+            collection(db, 'groupListings'),
+            orderBy(documentId()),
+            startAfter(lastGroupPageDocRef.current),
+            limit(DISCOVER_PAGE_SIZE),
+          ),
+        );
+        if (snap.empty) {
+          setGroupsDiscoverHasMore(false);
+          lastGroupPageDocRef.current = null;
+          return;
+        }
+        const list: StuntGroup[] = [];
+        snap.forEach((d) => {
+          const g = mapGroupListingDoc(d);
+          if (g) list.push(g);
+        });
+        setExtraGroupListings((prev) => [...prev, ...list]);
+        lastGroupPageDocRef.current = snap.docs[snap.docs.length - 1] ?? null;
+        if (snap.docs.length < DISCOVER_PAGE_SIZE) {
+          setGroupsDiscoverHasMore(false);
+        }
+      })(),
+    ]);
+  }, [currentUserId, profilesDiscoverHasMore, groupsDiscoverHasMore]);
 
   const allProfiles = useMemo(() => {
     const list = [...remoteProfiles];
@@ -189,8 +400,14 @@ export function SwipeProvider({ children }: { children: React.ReactNode }) {
   /** Real-time subscriptions for discover, swipes, matches, blocks */
   useEffect(() => {
     if (!currentUserId) {
-      setRemoteProfiles([]);
-      setGroupListings([]);
+      setProfileFirstPage([]);
+      setExtraDiscoverProfiles([]);
+      setGroupFirstPage([]);
+      setExtraGroupListings([]);
+      lastProfilePageDocRef.current = null;
+      lastGroupPageDocRef.current = null;
+      setProfilesDiscoverHasMore(true);
+      setGroupsDiscoverHasMore(true);
       setMessages([]);
       setOutSwipeTargets(new Map());
       setBlockedTargetIds(new Set());
@@ -202,14 +419,28 @@ export function SwipeProvider({ children }: { children: React.ReactNode }) {
     try {
       db = getFirestoreDb();
     } catch {
-      setRemoteProfiles([]);
-      setGroupListings([]);
+      setProfileFirstPage([]);
+      setExtraDiscoverProfiles([]);
+      setGroupFirstPage([]);
+      setExtraGroupListings([]);
+      lastProfilePageDocRef.current = null;
+      lastGroupPageDocRef.current = null;
+      setProfilesDiscoverHasMore(true);
+      setGroupsDiscoverHasMore(true);
       setMessages([]);
       setOutSwipeTargets(new Map());
       setBlockedTargetIds(new Set());
       setDiscoverReady(true);
       return;
     }
+
+    const uid = currentUserId;
+    setExtraDiscoverProfiles([]);
+    setExtraGroupListings([]);
+    lastProfilePageDocRef.current = null;
+    lastGroupPageDocRef.current = null;
+    setProfilesDiscoverHasMore(true);
+    setGroupsDiscoverHasMore(true);
 
     setDiscoverReady(false);
     let profilesDone = false;
@@ -229,37 +460,55 @@ export function SwipeProvider({ children }: { children: React.ReactNode }) {
       }
     };
 
-    const unsubPublic = onSnapshot(
+    const profilesQuery = query(
       collection(db, 'publicProfiles'),
+      orderBy('updatedAt', 'desc'),
+      limit(DISCOVER_PAGE_SIZE),
+    );
+
+    const unsubPublic = onSnapshot(
+      profilesQuery,
       (snap) => {
         const list: StunterProfile[] = [];
         snap.forEach((d) => {
-          if (d.id === currentUserId) return;
-          const pdata = d.data();
-          if (pdata && typeof pdata === 'object' && 'accountClosedAt' in pdata && pdata.accountClosedAt != null) {
-            return;
-          }
-          const p = profileFromFirestore(pdata, d.id, '');
-          if (p) {
-            p.location = stripLocationToCityRegionOnly(p.location);
-            list.push(p);
-          }
+          const p = mapPublicProfileDoc(d as QueryDocumentSnapshot, uid);
+          if (p) list.push(p);
         });
-        setRemoteProfiles(list);
+        setProfileFirstPage(list);
+        if (snap.docs.length < DISCOVER_PAGE_SIZE) {
+          setProfilesDiscoverHasMore(false);
+          lastProfilePageDocRef.current = null;
+        } else {
+          setProfilesDiscoverHasMore(true);
+          lastProfilePageDocRef.current = snap.docs[snap.docs.length - 1] ?? null;
+        }
         finishIfNeeded('profiles');
       },
       () => finishIfNeeded('profiles'),
     );
 
-    const unsubListings = onSnapshot(
+    const groupListingsQuery = query(
       collection(db, 'groupListings'),
+      orderBy(documentId()),
+      limit(DISCOVER_PAGE_SIZE),
+    );
+
+    const unsubListings = onSnapshot(
+      groupListingsQuery,
       (snap) => {
         const list: StuntGroup[] = [];
         snap.forEach((d) => {
-          const g = groupListingFromFirestore(d.data(), d.id);
-          if (g) list.push({ ...g, location: stripGroupLocationToCityRegionOnly(g.location) });
+          const g = mapGroupListingDoc(d as QueryDocumentSnapshot);
+          if (g) list.push(g);
         });
-        setGroupListings(list);
+        setGroupFirstPage(list);
+        if (snap.docs.length < DISCOVER_PAGE_SIZE) {
+          setGroupsDiscoverHasMore(false);
+          lastGroupPageDocRef.current = null;
+        } else {
+          setGroupsDiscoverHasMore(true);
+          lastGroupPageDocRef.current = snap.docs[snap.docs.length - 1] ?? null;
+        }
         finishIfNeeded('listings');
       },
       () => finishIfNeeded('listings'),
@@ -303,9 +552,14 @@ export function SwipeProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!currentUserId) {
       setMatches([]);
+      prevMatchIdsRef.current = new Set();
+      matchesHadFirstSnapshotRef.current = false;
       flushMatchRefreshWaiters();
       return;
     }
+
+    prevMatchIdsRef.current = new Set();
+    matchesHadFirstSnapshotRef.current = false;
 
     let db: ReturnType<typeof getFirestoreDb>;
     try {
@@ -323,19 +577,18 @@ export function SwipeProvider({ children }: { children: React.ReactNode }) {
         orderBy('matchedAt', 'desc'),
       ),
       (snap) => {
-        const list: Match[] = [];
-        snap.forEach((d) => {
-          const x = d.data();
-          const u = x.userIds;
-          if (!Array.isArray(u) || u.length !== 2 || typeof u[0] !== 'string' || typeof u[1] !== 'string') {
-            return;
+        const list = matchesFromMatchQuerySnap(snap);
+        const ids = new Set(list.map((m) => m.id));
+        if (matchesHadFirstSnapshotRef.current) {
+          for (const m of list) {
+            if (!prevMatchIdsRef.current.has(m.id)) {
+              setUnseenMatchCount((n) => n + 1);
+            }
           }
-          list.push({
-            id: d.id,
-            profileIds: [u[0], u[1]],
-            matchedAt: timestampToIso(x.matchedAt),
-          });
-        });
+        } else {
+          matchesHadFirstSnapshotRef.current = true;
+        }
+        prevMatchIdsRef.current = ids;
         setMatches(list);
         if (matchRefreshWaitersRef.current.length > 0) {
           flushMatchRefreshWaiters();
@@ -373,7 +626,8 @@ export function SwipeProvider({ children }: { children: React.ReactNode }) {
     for (const matchId of matchIds) {
       const q = query(
         collection(db, 'matches', matchId, 'messages'),
-        orderBy('createdAt', 'asc'),
+        orderBy('createdAt', 'desc'),
+        limit(MESSAGES_PAGE_SIZE),
       );
       unsubs.push(
         onSnapshot(q, (snap) => {
@@ -391,6 +645,7 @@ export function SwipeProvider({ children }: { children: React.ReactNode }) {
                 createdAt: timestampToIso(x.createdAt),
               });
             });
+            add.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
             return [...rest, ...add].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
           });
         }),
@@ -410,20 +665,6 @@ export function SwipeProvider({ children }: { children: React.ReactNode }) {
     [profileIdSet, groupIdSet, currentUserId],
   );
 
-  const ensureMatchAbsent = useCallback(
-    async (db: ReturnType<typeof getFirestoreDb>, a: string, b: string) => {
-      const q = query(collection(db, 'matches'), where('userIds', 'array-contains', a));
-      const snap = await getDocs(q);
-      let exists = false;
-      snap.forEach((d) => {
-        const u = d.data().userIds as string[] | undefined;
-        if (u && u.includes(b)) exists = true;
-      });
-      return !exists;
-    },
-    [],
-  );
-
   const like = useCallback(
     (entityId: string) => {
       if (!currentUserId || entityId === currentUserId) return;
@@ -434,56 +675,15 @@ export function SwipeProvider({ children }: { children: React.ReactNode }) {
       const db = getFirestoreDb();
       const swipeRef = doc(db, 'swipes', swipeDocId(uid, targetType, entityId));
 
-      void (async () => {
-        try {
-          await setDoc(swipeRef, {
-            fromUserId: uid,
-            targetType,
-            targetId: entityId,
-            direction: 'like',
-            createdAt: serverTimestamp(),
-          });
-
-          if (targetType === 'group') {
-            const [x, y] = sortedPair(uid, entityId);
-            const ok = await ensureMatchAbsent(db, uid, entityId);
-            if (ok) {
-              await addDoc(collection(db, 'matches'), {
-                userIds: [x, y],
-                kind: 'group',
-                matchedAt: serverTimestamp(),
-              });
-              setUnseenMatchCount((n) => n + 1);
-            }
-            return;
-          }
-
-          const mutualQ = query(
-            collection(db, 'swipes'),
-            where('fromUserId', '==', entityId),
-            where('targetId', '==', uid),
-            where('targetType', '==', 'profile'),
-            where('direction', '==', 'like'),
-          );
-          const mutualSnap = await getDocs(mutualQ);
-          if (!mutualSnap.empty) {
-            const [x, y] = sortedPair(uid, entityId);
-            const ok = await ensureMatchAbsent(db, uid, entityId);
-            if (ok) {
-              await addDoc(collection(db, 'matches'), {
-                userIds: [x, y],
-                kind: 'profile',
-                matchedAt: serverTimestamp(),
-              });
-              setUnseenMatchCount((n) => n + 1);
-            }
-          }
-        } catch {
-          // ignore; rules or network
-        }
-      })();
+      void setDoc(swipeRef, {
+        fromUserId: uid,
+        targetType,
+        targetId: entityId,
+        direction: 'like',
+        createdAt: serverTimestamp(),
+      }).catch(() => undefined);
     },
-    [currentUserId, resolveSwipeTargetType, ensureMatchAbsent],
+    [currentUserId, resolveSwipeTargetType],
   );
 
   const pass = useCallback(
@@ -598,6 +798,8 @@ export function SwipeProvider({ children }: { children: React.ReactNode }) {
       discoverReady,
       matchNeedsFirstMessageFromMe,
       refreshMatchFeed,
+      loadMoreDiscover,
+      hasMoreDiscover,
     }),
     [
       discoverStack,
@@ -619,6 +821,8 @@ export function SwipeProvider({ children }: { children: React.ReactNode }) {
       discoverReady,
       matchNeedsFirstMessageFromMe,
       refreshMatchFeed,
+      loadMoreDiscover,
+      hasMoreDiscover,
     ],
   );
 
@@ -630,3 +834,6 @@ export function useSwipe() {
   if (!ctx) throw new Error('useSwipe must be used within SwipeProvider');
   return ctx;
 }
+
+/** Same as `SwipeProvider` — clearer name for onboarding / docs. */
+export const DiscoverAndMatchesProvider = SwipeProvider;

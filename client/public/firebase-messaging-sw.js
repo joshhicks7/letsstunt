@@ -22,7 +22,7 @@ messaging.onBackgroundMessage(function(payload) {
   const notificationTitle = payload.notification?.title || 'Notification';
   const notificationOptions = {
     body: payload.notification?.body || '',
-    //icon: '/favicon.ico', // optional
+    icon: '/images/pwa_48.png', // optional
   };
 
   self.registration.showNotification(notificationTitle, notificationOptions);

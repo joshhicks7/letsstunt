@@ -1,10 +1,137 @@
 import * as admin from 'firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
+import { onDocumentWritten } from 'firebase-functions/v2/firestore';
 
 admin.initializeApp();
 
 const REGION = 'us-central1';
+
+function sortedPair(a: string, b: string): [string, string] {
+  return a < b ? [a, b] : [b, a];
+}
+
+function swipeDocId(fromUserId: string, targetType: 'profile' | 'group', targetId: string): string {
+  return `${fromUserId}_${targetType}_${targetId}`;
+}
+
+function matchDocIdProfile(a: string, b: string): string {
+  const [x, y] = sortedPair(a, b);
+  return `p_${x}_${y}`;
+}
+
+function matchDocIdGroup(userId: string, groupId: string): string {
+  const [x, y] = sortedPair(userId, groupId);
+  return `g_${x}_${y}`;
+}
+
+/**
+ * Notify human users with stored FCM tokens. Skips non-user ids (e.g. group listing doc ids).
+ */
+async function sendMatchPushNotifications(db: admin.firestore.Firestore, userIds: string[]): Promise<void> {
+  const unique = [...new Set(userIds.filter((id) => typeof id === 'string' && id.length > 0))];
+  const tokens: string[] = [];
+  for (const uid of unique) {
+    try {
+      const userDoc = await db.collection('users').doc(uid).get();
+      const token = userDoc.data()?.fcmToken;
+      if (typeof token === 'string' && token.length > 0) tokens.push(token);
+    } catch (err) {
+      console.error(`Failed to fetch FCM token for uid ${uid}`, err);
+    }
+  }
+  if (tokens.length === 0) return;
+
+  try {
+    const response = await admin.messaging().sendEachForMulticast({
+      tokens,
+      notification: {
+        title: "It's a Match",
+        body: 'You matched on LetsStunt — open the app to say hi.',
+      },
+    });
+    if (response.failureCount > 0) {
+      console.warn('FCM match notify partial failure', response.failureCount, response.responses.slice(0, 3));
+    }
+  } catch (err) {
+    console.error('Error sending FCM match notifications:', err);
+  }
+}
+
+/**
+ * When a user likes (swipe doc with direction like), create a match server-side if rules are satisfied,
+ * then send push notifications. Replaces client-side mutual checks and match writes.
+ */
+export const createMatchWhenSwipeLiked = onDocumentWritten(
+  { document: 'swipes/{swipeId}', region: REGION },
+  async (event) => {
+    const after = event.data?.after;
+    if (!after?.exists) return;
+
+    const data = after.data();
+    if (!data) return;
+    if (data.direction !== 'like') return;
+
+    const fromUserId = data.fromUserId;
+    const targetId = data.targetId;
+    const targetType = data.targetType;
+    if (typeof fromUserId !== 'string' || typeof targetId !== 'string') return;
+    if (targetType !== 'profile' && targetType !== 'group') return;
+
+    const db = admin.firestore();
+
+    if (targetType === 'group') {
+      const matchId = matchDocIdGroup(fromUserId, targetId);
+      const ref = db.collection('matches').doc(matchId);
+      const created = await db.runTransaction(async (tx) => {
+        const snap = await tx.get(ref);
+        if (snap.exists) return false;
+        const [x, y] = sortedPair(fromUserId, targetId);
+        tx.set(ref, {
+          userIds: [x, y],
+          kind: 'group',
+          matchedAt: FieldValue.serverTimestamp(),
+        });
+        return true;
+      });
+      if (!created) return;
+
+      const notifyIds = [fromUserId];
+      try {
+        const listing = await db.collection('groupListings').doc(targetId).get();
+        const creatorId = listing.data()?.creatorId;
+        if (typeof creatorId === 'string' && creatorId !== fromUserId) notifyIds.push(creatorId);
+      } catch (e) {
+        console.error('group listing lookup for match notify', e);
+      }
+      await sendMatchPushNotifications(db, notifyIds);
+      return;
+    }
+
+    // profile: require reciprocal like
+    const reciprocalId = swipeDocId(targetId, 'profile', fromUserId);
+    const recSnap = await db.collection('swipes').doc(reciprocalId).get();
+    const rec = recSnap.data();
+    if (!rec || rec.direction !== 'like') return;
+
+    const matchId = matchDocIdProfile(fromUserId, targetId);
+    const ref = db.collection('matches').doc(matchId);
+    const created = await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (snap.exists) return false;
+      const [x, y] = sortedPair(fromUserId, targetId);
+      tx.set(ref, {
+        userIds: [x, y],
+        kind: 'profile',
+        matchedAt: FieldValue.serverTimestamp(),
+      });
+      return true;
+    });
+    if (!created) return;
+
+    await sendMatchPushNotifications(db, [fromUserId, targetId]);
+  },
+);
 
 /**
  * Soft-delete then remove Auth: Storage profile media, squad + listing cleanup,
@@ -116,46 +243,6 @@ export const deleteMyAccount = onCall({ region: REGION }, async (request) => {
     { merge: true },
   );
 
-export const notifyOnMatch = onCreate(
-  {
-    region: REGION,
-    document: 'matches/{matchId}', // change to your collection
-  },
-  async (event) => {
-    const matchData = event.data?.data();
-    if (!matchData || !Array.isArray(matchData.userIds)) return;
-
-    const db = admin.firestore();
-    const tokens: string[] = [];
-
-    // Fetch FCM tokens for all users in the array
-    for (const uid of matchData.userIds) {
-      try {
-        const userDoc = await db.collection('users').doc(uid).get();
-        const token = userDoc.data()?.fcmToken;
-        if (token) tokens.push(token);
-      } catch (err) {
-        console.error(`Failed to fetch token for UID: ${uid}`, err);
-      }
-    }
-
-    if (tokens.length === 0) return;
-
-    // Use sendMulticast for multiple tokens
-    try {
-      const response = await admin.messaging().sendMulticast({
-        tokens,
-        notification: {
-          title: "It's a Match 🎉",
-          body: 'You matched with someone!',
-        },
-      });
-      console.log('FCM multicast response:', response);
-    } catch (err) {
-      console.error('Error sending FCM notifications:', err);
-    }
-  },
-);
   await db.collection('publicProfiles').doc(uid).set({
     accountClosedAt: closedAt,
   });

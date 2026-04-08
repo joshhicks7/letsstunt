@@ -31,6 +31,7 @@ import { profileFromFirestore, serializeProfile } from '@/lib/firestoreProfile';
 import { mapAuthError } from '@/lib/mapAuthError';
 import { mapDeleteAccountError } from '@/lib/mapDeleteAccountError';
 import { syncPublicProfileDoc } from '@/lib/syncPublicProfile';
+import { useWebFCMRegistration } from '@/hooks/useWebFCMRegistration';
 
 interface AuthContextValue {
   authReady: boolean;
@@ -135,6 +136,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   userRef.current = user;
   const onboardingCompleteRef = useRef(onboardingComplete);
   onboardingCompleteRef.current = onboardingComplete;
+
+  useWebFCMRegistration(user?.id ?? null, onboardingComplete && user != null);
 
   const syncFromFirestore = useCallback(async (fbUser: User): Promise<{ onboardingComplete: boolean }> => {
     const db = getFirestoreDb();

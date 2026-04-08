@@ -46,13 +46,14 @@ export default function MatchChatScreen() {
   const listRef = useRef<FlatList<ChatMessage>>(null);
 
   const onRefresh = useCallback(async () => {
+    if (!id) return;
     setRefreshing(true);
     try {
-      await refreshMatchFeed();
+      await refreshMatchFeed({ threadMatchId: id });
     } finally {
       setRefreshing(false);
     }
-  }, [refreshMatchFeed]);
+  }, [id, refreshMatchFeed]);
 
   const match = useMemo(() => (id ? getMatchById(id) : undefined), [id, getMatchById]);
   const profile = match ? getMatchProfile(match) : undefined;

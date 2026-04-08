@@ -1,6 +1,6 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { router } from 'expo-router';
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, Share, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GroupSwipeCard } from '@/components/GroupSwipeCard';
@@ -19,11 +19,21 @@ import { rosterProfilesForGroup } from '@/lib/groupRoster';
 export default function DiscoverScreen() {
   const colors = Colors[useColorScheme() ?? 'light'];
   const insets = useSafeAreaInsets();
-  const { discoverStack, like, pass, block, report, allProfiles } = useSwipe();
+  const { discoverStack, like, pass, block, report, allProfiles, loadMoreDiscover, hasMoreDiscover } =
+    useSwipe();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [reportModalVisible, setReportModalVisible] = useState(false);
   const swipeRef = useRef<SwipeableDiscoverCardRef>(null);
   const current = discoverStack[currentIndex];
+
+  /** Prefetch more discover rows before the user runs out (bounded Firestore pages). */
+  useEffect(() => {
+    if (!hasMoreDiscover) return;
+    const remaining = discoverStack.length - currentIndex;
+    if (remaining <= 3 && discoverStack.length > 0) {
+      void loadMoreDiscover();
+    }
+  }, [hasMoreDiscover, discoverStack.length, currentIndex, loadMoreDiscover]);
 
   const openDetail = () => {
     if (!current) return;
