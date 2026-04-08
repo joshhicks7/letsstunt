@@ -147,7 +147,7 @@ export default function MatchesScreen() {
         ListEmptyComponent={
           <View style={styles.emptyBlock}>
             <View style={[styles.emptyIconWrap, { backgroundColor: colors.tint + '18' }]}>
-              <FontAwesome name="heart-o" size={36} color={colors.tint} />
+              <FontAwesome name="users" size={36} color={colors.tint} />
             </View>
             <ThemedText style={[styles.emptyTitle, { color: colors.text }]}>No matches yet</ThemedText>
             <ThemedText style={[styles.emptyBody, { color: colors.secondary }]}>

@@ -43,7 +43,7 @@ function TabBarWithSwipe() {
         lazy: false,
       }}
     >
-      <Tabs.Screen name="discover" options={{ title: 'Discover', tabBarIcon: ({ color }) => <FontAwesome name="heart" size={22} color={color} /> }} />
+      <Tabs.Screen name="discover" options={{ title: 'Discover', tabBarIcon: ({ color }) => <FontAwesome name="search" size={22} color={color} /> }} />
       <Tabs.Screen
         name="matches"
         options={{
