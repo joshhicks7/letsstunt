@@ -116,6 +116,46 @@ export const deleteMyAccount = onCall({ region: REGION }, async (request) => {
     { merge: true },
   );
 
+export const notifyOnMatch = onCreate(
+  {
+    region: REGION,
+    document: 'matches/{matchId}', // change to your collection
+  },
+  async (event) => {
+    const matchData = event.data?.data();
+    if (!matchData || !Array.isArray(matchData.userIds)) return;
+
+    const db = admin.firestore();
+    const tokens: string[] = [];
+
+    // Fetch FCM tokens for all users in the array
+    for (const uid of matchData.userIds) {
+      try {
+        const userDoc = await db.collection('users').doc(uid).get();
+        const token = userDoc.data()?.fcmToken;
+        if (token) tokens.push(token);
+      } catch (err) {
+        console.error(`Failed to fetch token for UID: ${uid}`, err);
+      }
+    }
+
+    if (tokens.length === 0) return;
+
+    // Use sendMulticast for multiple tokens
+    try {
+      const response = await admin.messaging().sendMulticast({
+        tokens,
+        notification: {
+          title: "It's a Match 🎉",
+          body: 'You matched with someone!',
+        },
+      });
+      console.log('FCM multicast response:', response);
+    } catch (err) {
+      console.error('Error sending FCM notifications:', err);
+    }
+  },
+);
   await db.collection('publicProfiles').doc(uid).set({
     accountClosedAt: closedAt,
   });
