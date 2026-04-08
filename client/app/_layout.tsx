@@ -6,7 +6,7 @@ import { useFonts } from 'expo-font';
 import { Stack, useGlobalSearchParams, usePathname, useRouter, useSegments, useRootNavigationState } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 import { Platform, useWindowDimensions, View } from 'react-native';
 import 'react-native-reanimated';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
@@ -34,7 +34,7 @@ export default function RootLayout() {
 }
 
 function RootLayoutNav() {
-  const resolvedScheme = useStableColorScheme();
+  const resolvedScheme = useColorScheme();
   const theme = useMemo(() => buildNavigationTheme(resolvedScheme), [resolvedScheme]);
   const { width } = useWindowDimensions();
   const isWideNative = Platform.OS !== 'web' && width > MAX_WEB_APP_WIDTH;
@@ -147,34 +147,4 @@ function AuthRouteGuard() {
   }, [authReady, user, onboardingComplete, segments, pathname, rootNav?.key, router, returnToKey, returnToParam]);
 
   return null;
-}
-
-function useStableColorScheme() {
-  const systemScheme = useColorScheme();
-
-  const [webScheme, setWebScheme] = useState<'light' | 'dark'>(() => {
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      return window.matchMedia('(prefers-color-scheme: dark)').matches
-        ? 'dark'
-        : 'light';
-    }
-    return 'light';
-  });
-
-  useEffect(() => {
-    if (Platform.OS !== 'web') return;
-
-    const media = window.matchMedia('(prefers-color-scheme: dark)');
-
-    const listener = (e: MediaQueryListEvent) => {
-      setWebScheme(e.matches ? 'dark' : 'light');
-    };
-
-    media.addEventListener('change', listener);
-    return () => media.removeEventListener('change', listener);
-  }, []);
-
-  return Platform.OS === 'web'
-    ? webScheme
-    : systemScheme ?? 'light';
 }
