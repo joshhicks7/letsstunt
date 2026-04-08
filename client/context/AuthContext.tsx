@@ -31,7 +31,8 @@ import { profileFromFirestore, serializeProfile } from '@/lib/firestoreProfile';
 import { mapAuthError } from '@/lib/mapAuthError';
 import { mapDeleteAccountError } from '@/lib/mapDeleteAccountError';
 import { syncPublicProfileDoc } from '@/lib/syncPublicProfile';
-import { useWebFCMRegistration } from '@/hooks/useWebFCMRegistration';
+import { requestPushTokenWithUserGesture } from '@/lib/registerPushUserAction';
+import { usePushRegistration } from '@/hooks/usePushRegistration';
 
 interface AuthContextValue {
   authReady: boolean;
@@ -51,6 +52,8 @@ interface AuthContextValue {
    * then deletes the Firebase Auth user. Callers should navigate to welcome after `ok`.
    */
   closeAccount: () => Promise<{ ok: true } | { ok: false; message: string }>;
+  /** Persisted on `users/{uid}.pushNotificationsEnabled`. */
+  setPushNotificationsEnabled: (enabled: boolean) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -137,7 +140,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const onboardingCompleteRef = useRef(onboardingComplete);
   onboardingCompleteRef.current = onboardingComplete;
 
-  useWebFCMRegistration(user?.id ?? null, onboardingComplete && user != null);
+  usePushRegistration(user?.id ?? null, onboardingComplete, user?.pushNotificationsEnabled);
+
+  const setPushNotificationsEnabled = useCallback(async (enabled: boolean) => {
+    const fbUser = getFirebaseAuth().currentUser;
+    const prev = userRef.current;
+    if (!fbUser || !prev) return;
+    try {
+      await updateDoc(doc(getFirestoreDb(), 'users', fbUser.uid), {
+        pushNotificationsEnabled: enabled,
+      });
+      setUser({ ...prev, pushNotificationsEnabled: enabled });
+      if (enabled) {
+        await requestPushTokenWithUserGesture(fbUser.uid);
+      }
+    } catch {
+      Alert.alert('Settings', 'Could not update notification preferences. Try again.');
+    }
+  }, []);
 
   const syncFromFirestore = useCallback(async (fbUser: User): Promise<{ onboardingComplete: boolean }> => {
     const db = getFirestoreDb();
@@ -151,7 +171,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         onboardingComplete: false,
         profile: serializeProfile(profile),
       });
-      setUser({ id: fbUser.uid, email, profile });
+      setUser({ id: fbUser.uid, email, profile, pushNotificationsEnabled: undefined });
       setOnboardingComplete(false);
       void syncPublicProfileDoc(fbUser.uid, profile, false);
       return { onboardingComplete: false };
@@ -177,13 +197,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         { onboardingComplete: false, profile: serializeProfile(profile) },
         { merge: true },
       );
-      setUser({ id: fbUser.uid, email, profile });
+      setUser({ id: fbUser.uid, email, profile, pushNotificationsEnabled: undefined });
       setOnboardingComplete(false);
       void syncPublicProfileDoc(fbUser.uid, profile, false);
       return { onboardingComplete: false };
     }
     const profile = { ...parsed, email: parsed.email || email };
-    setUser({ id: fbUser.uid, email: profile.email || email, profile });
+    const pushNotificationsEnabled =
+      typeof data.pushNotificationsEnabled === 'boolean' ? data.pushNotificationsEnabled : undefined;
+    setUser({
+      id: fbUser.uid,
+      email: profile.email || email,
+      profile,
+      pushNotificationsEnabled,
+    });
     setOnboardingComplete(complete);
     void syncPublicProfileDoc(fbUser.uid, profile, complete);
     return { onboardingComplete: complete };
@@ -303,7 +330,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         },
         { merge: true },
       );
-      setUser({ id: fbUser.uid, email, profile });
+      setUser((prev) =>
+        prev
+          ? { ...prev, id: fbUser.uid, email, profile }
+          : { id: fbUser.uid, email, profile, pushNotificationsEnabled: undefined },
+      );
       setOnboardingComplete(true);
       void syncPublicProfileDoc(fbUser.uid, profile, true);
     },
@@ -358,6 +389,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signInWithGoogleFromIdToken,
       finalizeGoogleUser,
       closeAccount,
+      setPushNotificationsEnabled,
     }),
     [
       authReady,
@@ -371,6 +403,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       updateProfile,
       signInWithGoogleFromIdToken,
       finalizeGoogleUser,
+      setPushNotificationsEnabled,
     ],
   );
 

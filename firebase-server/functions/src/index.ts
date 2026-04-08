@@ -1,7 +1,7 @@
 import * as admin from 'firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
-import { onDocumentWritten } from 'firebase-functions/v2/firestore';
+import { onDocumentCreated, onDocumentWritten } from 'firebase-functions/v2/firestore';
 
 admin.initializeApp();
 
@@ -25,37 +25,186 @@ function matchDocIdGroup(userId: string, groupId: string): string {
   return `g_${x}_${y}`;
 }
 
+type PushPayload = {
+  title: string;
+  body: string;
+  data?: Record<string, string>;
+};
+
+function collectFcmTokens(data: admin.firestore.DocumentData | undefined): string[] {
+  if (!data) return [];
+  const list: string[] = [];
+  const arr = data.fcmTokens;
+  if (Array.isArray(arr)) {
+    for (const x of arr) {
+      if (typeof x === 'string' && x.length > 0) list.push(x);
+    }
+  }
+  const legacy = data.fcmToken;
+  if (typeof legacy === 'string' && legacy.length > 0) list.push(legacy);
+  return [...new Set(list)];
+}
+
+async function pruneInvalidFcmToken(
+  db: admin.firestore.Firestore,
+  uid: string,
+  token: string,
+): Promise<void> {
+  const ref = db.collection('users').doc(uid);
+  let snap: admin.firestore.DocumentSnapshot;
+  try {
+    snap = await ref.get();
+  } catch (err) {
+    console.warn(`[pruneInvalidFcmToken] read failed`, { uid, err });
+    return;
+  }
+  const d = snap.data();
+  const updates: Record<string, unknown> = {};
+  if (d?.fcmToken === token) {
+    updates.fcmToken = FieldValue.delete();
+  }
+  if (Array.isArray(d?.fcmTokens) && d.fcmTokens.includes(token)) {
+    updates.fcmTokens = FieldValue.arrayRemove(token);
+  }
+  if (Object.keys(updates).length === 0) return;
+  try {
+    await ref.update(updates);
+  } catch (err) {
+    console.warn(`[pruneInvalidFcmToken] update failed`, { uid, err });
+  }
+}
+
 /**
- * Notify human users with stored FCM tokens. Skips non-user ids (e.g. group listing doc ids).
+ * Resolve Firebase auth UIDs to notify for a new chat message.
+ * Profile matches: the other user id in `userIds`.
+ * Group matches: one id may be a `groupListings` doc id — notify that listing's creator.
  */
-async function sendMatchPushNotifications(db: admin.firestore.Firestore, userIds: string[]): Promise<void> {
+async function resolveChatRecipientUserIds(
+  db: admin.firestore.Firestore,
+  matchUserIds: string[],
+  senderId: string,
+): Promise<string[]> {
+  const out = new Set<string>();
+  for (const id of matchUserIds) {
+    if (id === senderId) continue;
+    const userSnap = await db.collection('users').doc(id).get();
+    if (userSnap.exists) {
+      out.add(id);
+      continue;
+    }
+    const listingSnap = await db.collection('groupListings').doc(id).get();
+    const creatorId = listingSnap.data()?.creatorId;
+    if (typeof creatorId === 'string' && creatorId !== senderId) {
+      out.add(creatorId);
+    }
+  }
+  return [...out];
+}
+
+/**
+ * Send FCM to human users (reads `users/{uid}.fcmTokens` and legacy `fcmToken`).
+ * Skips uids with `pushNotificationsEnabled === false` or no tokens.
+ * `context` appears in logs for filtering (e.g. Cloud Logging).
+ */
+async function sendPushToUserIds(
+  db: admin.firestore.Firestore,
+  userIds: string[],
+  payload: PushPayload,
+  context: string,
+): Promise<void> {
   const unique = [...new Set(userIds.filter((id) => typeof id === 'string' && id.length > 0))];
-  const tokens: string[] = [];
+  const tokenMeta: { token: string; uid: string }[] = [];
+  const uidsSkippedPrefs: string[] = [];
+  const uidsMissingToken: string[] = [];
   for (const uid of unique) {
     try {
       const userDoc = await db.collection('users').doc(uid).get();
-      const token = userDoc.data()?.fcmToken;
-      if (typeof token === 'string' && token.length > 0) tokens.push(token);
+      const data = userDoc.data();
+      if (data?.pushNotificationsEnabled === false) {
+        uidsSkippedPrefs.push(uid);
+        continue;
+      }
+      const forUser = collectFcmTokens(data);
+      if (forUser.length === 0) {
+        uidsMissingToken.push(uid);
+        continue;
+      }
+      for (const token of forUser) {
+        tokenMeta.push({ token, uid });
+      }
     } catch (err) {
-      console.error(`Failed to fetch FCM token for uid ${uid}`, err);
+      console.error(`[sendPushToUserIds:${context}] token fetch failed`, { uid, err });
     }
   }
-  if (tokens.length === 0) return;
+
+  const tokens = tokenMeta.map((m) => m.token);
+
+  console.log(`[sendPushToUserIds:${context}]`, {
+    targetUids: unique.length,
+    tokenCount: tokens.length,
+    skippedPrefsUids: uidsSkippedPrefs,
+    missingTokenUids: uidsMissingToken,
+    notificationTitle: payload.title,
+    dataKeys: payload.data ? Object.keys(payload.data) : [],
+  });
+
+  if (tokens.length === 0) {
+    console.warn(`[sendPushToUserIds:${context}] skip send: no FCM tokens`);
+    return;
+  }
 
   try {
-    const response = await admin.messaging().sendEachForMulticast({
+    const message: admin.messaging.MulticastMessage = {
       tokens,
-      notification: {
-        title: "It's a Match",
-        body: 'You matched on LetsStunt — open the app to say hi.',
-      },
+      notification: { title: payload.title, body: payload.body },
+    };
+    if (payload.data) {
+      message.data = payload.data;
+    }
+    const response = await admin.messaging().sendEachForMulticast(message);
+    console.log(`[sendPushToUserIds:${context}] FCM multicast`, {
+      successCount: response.successCount,
+      failureCount: response.failureCount,
     });
     if (response.failureCount > 0) {
-      console.warn('FCM match notify partial failure', response.failureCount, response.responses.slice(0, 3));
+      const failures = response.responses
+        .map((r, i) => (!r.success ? { index: i, error: r.error?.code ?? r.error?.message } : null))
+        .filter(Boolean)
+        .slice(0, 5);
+      console.warn(`[sendPushToUserIds:${context}] partial failure samples`, failures);
+      const pruneOps: Promise<void>[] = [];
+      for (let i = 0; i < response.responses.length; i++) {
+        const r = response.responses[i];
+        if (r.success) continue;
+        const code = r.error?.code;
+        if (
+          code !== 'messaging/registration-token-not-registered' &&
+          code !== 'messaging/invalid-registration-token'
+        ) {
+          continue;
+        }
+        const meta = tokenMeta[i];
+        if (meta) {
+          pruneOps.push(pruneInvalidFcmToken(db, meta.uid, meta.token));
+        }
+      }
+      await Promise.all(pruneOps);
     }
   } catch (err) {
-    console.error('Error sending FCM match notifications:', err);
+    console.error(`[sendPushToUserIds:${context}] sendEachForMulticast error`, err);
   }
+}
+
+async function sendMatchPushNotifications(db: admin.firestore.Firestore, userIds: string[]): Promise<void> {
+  await sendPushToUserIds(
+    db,
+    userIds,
+    {
+      title: "It's a Match",
+      body: 'You matched on LetsStunt — open the app to say hi.',
+    },
+    'match',
+  );
 }
 
 /**
@@ -65,18 +214,34 @@ async function sendMatchPushNotifications(db: admin.firestore.Firestore, userIds
 export const createMatchWhenSwipeLiked = onDocumentWritten(
   { document: 'swipes/{swipeId}', region: REGION },
   async (event) => {
+    const swipeId = event.params.swipeId;
     const after = event.data?.after;
-    if (!after?.exists) return;
+    if (!after?.exists) {
+      console.log('[createMatchWhenSwipeLiked] skip: doc deleted or missing after', { swipeId });
+      return;
+    }
 
     const data = after.data();
-    if (!data) return;
-    if (data.direction !== 'like') return;
+    if (!data) {
+      console.log('[createMatchWhenSwipeLiked] skip: no data', { swipeId });
+      return;
+    }
+    if (data.direction !== 'like') {
+      console.log('[createMatchWhenSwipeLiked] skip: not a like', { swipeId, direction: data.direction });
+      return;
+    }
 
     const fromUserId = data.fromUserId;
     const targetId = data.targetId;
     const targetType = data.targetType;
-    if (typeof fromUserId !== 'string' || typeof targetId !== 'string') return;
-    if (targetType !== 'profile' && targetType !== 'group') return;
+    if (typeof fromUserId !== 'string' || typeof targetId !== 'string') {
+      console.log('[createMatchWhenSwipeLiked] skip: invalid fromUserId/targetId', { swipeId });
+      return;
+    }
+    if (targetType !== 'profile' && targetType !== 'group') {
+      console.log('[createMatchWhenSwipeLiked] skip: bad targetType', { swipeId, targetType });
+      return;
+    }
 
     const db = admin.firestore();
 
@@ -94,7 +259,12 @@ export const createMatchWhenSwipeLiked = onDocumentWritten(
         });
         return true;
       });
-      if (!created) return;
+      if (!created) {
+        console.log('[createMatchWhenSwipeLiked] group match already exists', { swipeId, matchId, fromUserId, listingId: targetId });
+        return;
+      }
+
+      console.log('[createMatchWhenSwipeLiked] group match created', { swipeId, matchId, fromUserId, listingId: targetId });
 
       const notifyIds = [fromUserId];
       try {
@@ -102,34 +272,111 @@ export const createMatchWhenSwipeLiked = onDocumentWritten(
         const creatorId = listing.data()?.creatorId;
         if (typeof creatorId === 'string' && creatorId !== fromUserId) notifyIds.push(creatorId);
       } catch (e) {
-        console.error('group listing lookup for match notify', e);
+        console.error('[createMatchWhenSwipeLiked] group listing lookup failed', { listingId: targetId, err: e });
       }
+      console.log('[createMatchWhenSwipeLiked] notifying group match', { matchId, notifyUids: notifyIds });
       await sendMatchPushNotifications(db, notifyIds);
       return;
     }
 
     // profile: require reciprocal like
     const reciprocalId = swipeDocId(targetId, 'profile', fromUserId);
-    const recSnap = await db.collection('swipes').doc(reciprocalId).get();
-    const rec = recSnap.data();
-    if (!rec || rec.direction !== 'like') return;
+    ProfileMutual:
+    {
+      const recSnap = await db.collection('swipes').doc(reciprocalId).get();
+      const rec = recSnap.data();
+      if (!rec || rec.direction !== 'like') {
+        console.log('[createMatchWhenSwipeLiked] profile: waiting for mutual like', {
+          swipeId,
+          fromUserId,
+          targetId,
+          reciprocalId,
+          reciprocalExists: recSnap.exists,
+          reciprocalDirection: rec?.direction,
+        });
+        return;
+      }
 
-    const matchId = matchDocIdProfile(fromUserId, targetId);
-    const ref = db.collection('matches').doc(matchId);
-    const created = await db.runTransaction(async (tx) => {
-      const snap = await tx.get(ref);
-      if (snap.exists) return false;
-      const [x, y] = sortedPair(fromUserId, targetId);
-      tx.set(ref, {
-        userIds: [x, y],
-        kind: 'profile',
-        matchedAt: FieldValue.serverTimestamp(),
+      const matchId = matchDocIdProfile(fromUserId, targetId);
+      const ref = db.collection('matches').doc(matchId);
+      const created = await db.runTransaction(async (tx) => {
+        const snap = await tx.get(ref);
+        if (snap.exists) return false;
+        const [x, y] = sortedPair(fromUserId, targetId);
+        tx.set(ref, {
+          userIds: [x, y],
+          kind: 'profile',
+          matchedAt: FieldValue.serverTimestamp(),
+        });
+        return true;
       });
-      return true;
-    });
-    if (!created) return;
+      if (!created) {
+        console.log('[createMatchWhenSwipeLiked] profile match already exists', { swipeId, matchId, fromUserId, targetId });
+        return;
+      }
 
-    await sendMatchPushNotifications(db, [fromUserId, targetId]);
+      console.log('[createMatchWhenSwipeLiked] profile match created', { swipeId, matchId, userPair: sortedPair(fromUserId, targetId) });
+      console.log('[createMatchWhenSwipeLiked] notifying profile match', { matchId, notifyUids: [fromUserId, targetId] });
+      await sendMatchPushNotifications(db, [fromUserId, targetId]);
+    }
+  },
+);
+
+/**
+ * Push notify the other participant(s) when a new DM is created under `matches/{matchId}/messages`.
+ */
+export const notifyOnChatMessageCreated = onDocumentCreated(
+  { document: 'matches/{matchId}/messages/{messageId}', region: REGION },
+  async (event) => {
+    const matchId = event.params.matchId;
+    const snap = event.data;
+    if (!snap?.exists) return;
+
+    const msg = snap.data();
+    const senderId = typeof msg.senderId === 'string' ? msg.senderId : '';
+    const bodyRaw = typeof msg.body === 'string' ? msg.body : '';
+    if (!senderId || !bodyRaw) return;
+
+    const db = admin.firestore();
+    const matchSnap = await db.collection('matches').doc(matchId).get();
+    const md = matchSnap.data();
+    const userIds = Array.isArray(md?.userIds)
+      ? md.userIds.filter((x: unknown): x is string => typeof x === 'string')
+      : [];
+    if (userIds.length === 0) return;
+
+    const recipientUids = await resolveChatRecipientUserIds(db, userIds, senderId);
+    if (recipientUids.length === 0) return;
+
+    let senderLabel = 'Someone';
+    try {
+      const pub = await db.collection('publicProfiles').doc(senderId).get();
+      const name = pub.data()?.displayName;
+      if (typeof name === 'string' && name.trim()) senderLabel = name.trim().slice(0, 40);
+    } catch {
+      /* use default label */
+    }
+
+    const messageId = event.params.messageId;
+    console.log('[notifyOnChatMessageCreated]', {
+      matchId,
+      messageId,
+      senderId,
+      recipientCount: recipientUids.length,
+      recipientUids,
+    });
+
+    const preview = bodyRaw.length > 120 ? `${bodyRaw.slice(0, 117)}...` : bodyRaw;
+    await sendPushToUserIds(
+      db,
+      recipientUids,
+      {
+        title: `Message from ${senderLabel}`,
+        body: preview,
+        data: { type: 'chat', matchId: String(matchId) },
+      },
+      'chat',
+    );
   },
 );
 

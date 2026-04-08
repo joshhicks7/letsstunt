@@ -145,6 +145,8 @@ export interface AuthUser {
   id: string;
   email: string;
   profile: StunterProfile;
+  /** When false, Cloud Functions skip push; when undefined, treated as enabled (legacy users). */
+  pushNotificationsEnabled?: boolean;
 }
 
 /** Draft for onboarding – collect before creating full profile */

@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Colors from '@/constants/Colors';
 import { FONT_SIZE, FONT_WEIGHT, SPACING } from '@/constants/Theme';
 import { useColorScheme } from '@/components/useColorScheme';
+import { InstallWebAppBanner } from '@/components/InstallWebAppBanner';
 import { SwipeProvider, useSwipe } from '@/context/SwipeContext';
 
 function TabBarWithSwipe() {
@@ -60,6 +61,7 @@ function TabBarWithSwipe() {
 export default function TabLayout() {
   return (
     <SwipeProvider>
+      <InstallWebAppBanner />
       <TabBarWithSwipe />
     </SwipeProvider>
   );

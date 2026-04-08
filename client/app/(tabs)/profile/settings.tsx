@@ -1,7 +1,16 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { router } from 'expo-router';
 import React from 'react';
-import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text as ThemedText, View as ThemedView } from '@/components/Themed';
 import Colors from '@/constants/Colors';
@@ -32,8 +41,9 @@ function alertMessage(title: string, message: string) {
 }
 
 export default function ProfileSettingsScreen() {
-  const { logout, closeAccount } = useAuth();
+  const { logout, closeAccount, user, setPushNotificationsEnabled } = useAuth();
   const [closing, setClosing] = React.useState(false);
+  const pushOn = user?.pushNotificationsEnabled !== false;
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? 'light'];
   const insets = useSafeAreaInsets();
@@ -82,6 +92,35 @@ export default function ProfileSettingsScreen() {
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         <ThemedText style={styles.pageTitle}>Settings</ThemedText>
+
+        <ThemedText style={[styles.groupLabel, { color: colors.secondary }]}>Notifications</ThemedText>
+        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View
+            style={[
+              styles.row,
+              { borderBottomWidth: 0, justifyContent: 'space-between' },
+            ]}
+          >
+            <View style={[styles.rowIcon, { backgroundColor: colors.tint + '18' }]}>
+              <FontAwesome name="bell" size={18} color={colors.tint} />
+            </View>
+            <ThemedText style={[styles.rowLabel, { color: colors.text, flex: 1 }]}>
+              Push notifications
+            </ThemedText>
+            <Switch
+              value={pushOn}
+              onValueChange={(v) => void setPushNotificationsEnabled(v)}
+              trackColor={{ false: colors.border, true: colors.tint + '88' }}
+              thumbColor={pushOn ? colors.tint : colors.secondary}
+              ios_backgroundColor={colors.border}
+            />
+          </View>
+          <ThemedText style={[styles.hint, { color: colors.secondary }]}>
+            {Platform.OS === 'web'
+              ? 'On iPhone or Android in the browser, add LetsStunt to your home screen for reliable alerts.'
+              : 'Get notified about new matches and messages.'}
+          </ThemedText>
+        </View>
 
         <ThemedText style={[styles.groupLabel, { color: colors.secondary }]}>Account</ThemedText>
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -205,6 +244,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   rowLabel: { flex: 1, fontSize: FONT_SIZE.md, fontWeight: FONT_WEIGHT.medium },
+  hint: {
+    fontSize: FONT_SIZE.sm,
+    paddingHorizontal: SPACING.md,
+    paddingBottom: SPACING.md,
+    lineHeight: 20,
+  },
   closingOverlay: {
     marginTop: SPACING.md,
     paddingVertical: SPACING.lg,

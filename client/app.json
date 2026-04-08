@@ -15,19 +15,22 @@
     },
     "ios": {
       "supportsTablet": true,
+      "bundleIdentifier": "com.letsstunt.app",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Find flyers and stunt partners nearby.",
         "NSPhotoLibraryUsageDescription": "Add profile photos and stunt media to your athlete profile."
       }
     },
     "android": {
+      "package": "com.letsstunt.app",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#5B4B8A"
       },
       "permissions": [
         "ACCESS_COARSE_LOCATION",
-        "ACCESS_FINE_LOCATION"
+        "ACCESS_FINE_LOCATION",
+        "POST_NOTIFICATIONS"
       ]
     },
     "web": {
@@ -48,7 +51,17 @@
       "expo-router",
       "expo-location",
       "@react-native-community/datetimepicker",
-      "expo-web-browser"
+      "expo-web-browser",
+      "@react-native-firebase/app",
+      "@react-native-firebase/messaging",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "useFrameworks": "static"
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
