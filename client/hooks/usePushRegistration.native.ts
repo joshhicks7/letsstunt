@@ -25,6 +25,7 @@ export function usePushRegistration(
     }
 
     void registerPushToken(userUid).then((res) => {
+      console.log('res', res);
       if (res.token) lastTokenRef.current = res.token;
     });
   }, [userUid, wantsPush]);

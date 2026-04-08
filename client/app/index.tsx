@@ -7,6 +7,7 @@ export default function Index() {
   const { authReady, user, onboardingComplete } = useAuth();
   useEffect(() => {
       if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+        console.log('Service Worker supported');
         window.addEventListener('load', () => {
           navigator.serviceWorker.register('/firebase-messaging-sw.js')
             .then(() => console.log('Service Worker registered'))

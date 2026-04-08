@@ -52,6 +52,7 @@ export function InstallWebAppBanner() {
     try {
       await setPushNotificationsEnabled(true);
       await requestPushTokenWithUserGesture(user.id);
+      setDismissed(true);
     } catch {
       /* ignore */
     }
@@ -80,9 +81,9 @@ export function InstallWebAppBanner() {
           <ThemedText style={[styles.title, { color: colors.text }]}>Add LetsStunt to your home screen</ThemedText>
           <ThemedText style={[styles.body, { color: colors.secondary }]}>
             {ios
-              ? 'On iPhone or iPad: tap Share, then “Add to Home Screen”. Open the app from your home screen for the best experience and notifications.'
+              ? 'Tap Share, then Add to Home Screen'
               : android
-                ? 'On Android: open the browser menu and tap “Install app” or “Add to Home screen”, then open LetsStunt from your home screen for notifications.'
+                ? 'Open the browser menu and tap Install app or Add to Home screen.'
                 : 'Install this app to your home screen for notifications.'}
           </ThemedText>
           <Pressable

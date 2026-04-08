@@ -40,11 +40,24 @@ export async function registerPushToken(
     if (permission !== 'granted') return { ok: false };
 
     const messaging = getMessaging(getFirebaseApp());
-    const token = await getToken(messaging, { vapidKey });
-    if (!token) return { ok: false };
+    try {
+      const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+      const token = await getToken(
+        messaging,
+        {
+          vapidKey,
+          serviceWorkerRegistration: registration,
+        }
+      );
+      if (!token) return { ok: false };
+      console.log('token', token);
+      await addFcmTokenToUser(uid, token);
+      return { ok: true, token };
+    } catch (error) {
+      console.error('error', error);
+      return { ok: false };
+    }
 
-    await addFcmTokenToUser(uid, token);
-    return { ok: true, token };
   } catch {
     return { ok: false };
   }
