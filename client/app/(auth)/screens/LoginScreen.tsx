@@ -2,6 +2,7 @@ import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, TextInput, View } from 'react-native';
+import LoginWithApple from '@/components/auth/LoginWithApple';
 import LoginWithGoogle from '@/components/auth/LoginWithGoogle';
 import { Text as ThemedText, View as ThemedView } from '@/components/Themed';
 import Colors from '@/constants/Colors';
@@ -51,10 +52,13 @@ export default function LoginScreen() {
         <FontAwesome name="arrow-left" size={22} color={colors.text} />
       </Pressable>
       <ThemedText style={styles.title}>Log in</ThemedText>
-      <LoginWithGoogle onComplete={onGoogleComplete} disabled={submitting} />
+      <View style={styles.socialRow}>
+        <LoginWithGoogle onComplete={onGoogleComplete} disabled={submitting} />
+        <LoginWithApple onComplete={onGoogleComplete} disabled={submitting} compact />
+      </View>
       <View style={styles.dividerRow}>
         <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
-        <ThemedText style={[styles.dividerText, { color: colors.secondary }]}>or email</ThemedText>
+        <ThemedText style={[styles.dividerText, { color: colors.secondary }]}>or</ThemedText>
         <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
       </View>
       <TextInput

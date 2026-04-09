@@ -5,6 +5,13 @@ export const authEmailStyles = StyleSheet.create({
   container: { flex: 1, padding: SPACING.lg, paddingTop: 60 },
   back: { marginBottom: SPACING.lg },
   title: { fontSize: FONT_SIZE.xl, fontWeight: FONT_WEIGHT.bold, marginBottom: SPACING.lg },
+  socialRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.md,
+    flexWrap: 'wrap',
+  },
   input: {
     height: 48,
     borderRadius: RADIUS.md,

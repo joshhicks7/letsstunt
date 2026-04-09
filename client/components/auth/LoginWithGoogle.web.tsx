@@ -6,8 +6,8 @@ import { useColorScheme } from '@/components/useColorScheme';
 import { getFirebaseAuth } from '@/lib/getFirebaseAuth';
 import { mapAuthError } from '@/lib/mapAuthError';
 import {
-  GOOGLE_CONTINUE_ASPECT_RATIO,
   GOOGLE_CONTINUE_DARK,
+  GOOGLE_CONTINUE_ICON_SIZE,
   GOOGLE_CONTINUE_LIGHT,
 } from '@/components/auth/googleContinueAssets';
 import type { LoginWithGoogleProps } from './loginWithGoogle.types';
@@ -69,20 +69,21 @@ export default function LoginWithGoogle({ onComplete, disabled, style }: LoginWi
 
 const styles = StyleSheet.create({
   wrap: {
-    width: '100%',
+    alignSelf: 'center',
+    alignItems: 'center',
   },
   dimmed: {
     opacity: 0.55,
   },
   imgSlot: {
-    width: '100%',
-    aspectRatio: GOOGLE_CONTINUE_ASPECT_RATIO,
+    width: GOOGLE_CONTINUE_ICON_SIZE,
+    height: GOOGLE_CONTINUE_ICON_SIZE,
     alignItems: 'center',
     justifyContent: 'center',
   },
   img: {
-    width: '100%',
-    height: '100%',
+    width: GOOGLE_CONTINUE_ICON_SIZE,
+    height: GOOGLE_CONTINUE_ICON_SIZE,
   },
   spinner: {
     position: 'absolute',
