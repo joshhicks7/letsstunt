@@ -4,7 +4,6 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -13,6 +12,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { ProfileRemoteImage } from '@/components/ProfileRemoteImage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BirthdayPickerField } from '@/components/BirthdayPickerField';
 import { LocationSearchField } from '@/components/LocationSearchField';
@@ -336,9 +336,10 @@ export default function ProfileEditScreen() {
                           {item ? (
                             <View style={styles.mediaCellInner}>
                               <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
-                                <Image
-                                  source={{ uri: item.uri }}
+                                <ProfileRemoteImage
+                                  media={item}
                                   style={styles.mediaThumb}
+                                  contentFit="cover"
                                   accessibilityLabel="Profile photo"
                                 />
                               </View>

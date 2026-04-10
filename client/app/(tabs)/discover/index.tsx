@@ -1,6 +1,7 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
+import { Image } from 'expo-image';
 import { router } from 'expo-router';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, Share, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GroupSwipeCard } from '@/components/GroupSwipeCard';
@@ -13,8 +14,12 @@ import { DISCOVER_ACTION_BTN_SIZE, DISCOVER_ACTION_ICON_SIZE } from '@/constants
 import { SPACING, RADIUS, FONT_SIZE, FONT_WEIGHT } from '@/constants/Theme';
 import { useSwipe } from '@/context/SwipeContext';
 import { useColorScheme } from '@/components/useColorScheme';
+import { discoverEntryCoverDisplayUri } from '@/lib/discoverCoverUri';
 import { buildAppInviteMessage } from '@/lib/groupJoinLink';
 import { rosterProfilesForGroup } from '@/lib/groupRoster';
+
+/** Prefetch ahead covers (display URIs) for smoother swipes; capped to limit parallel requests. */
+const DISCOVER_COVER_PREFETCH_CAP = 2;
 
 export default function DiscoverScreen() {
   const colors = Colors[useColorScheme() ?? 'light'];
@@ -25,6 +30,33 @@ export default function DiscoverScreen() {
   const [reportModalVisible, setReportModalVisible] = useState(false);
   const swipeRef = useRef<SwipeableDiscoverCardRef>(null);
   const current = discoverStack[currentIndex];
+
+  const stackIdentityKey = useMemo(
+    () =>
+      discoverStack.map((e) => (e.kind === 'profile' ? `p:${e.data.id}` : `g:${e.data.id}`)).join('|'),
+    [discoverStack],
+  );
+
+  const discoverStackRef = useRef(discoverStack);
+  const allProfilesRef = useRef(allProfiles);
+  discoverStackRef.current = discoverStack;
+  allProfilesRef.current = allProfiles;
+
+  /** Prefetch upcoming discover cover URLs (optimized when present). */
+  useEffect(() => {
+    if (discoverStackRef.current.length === 0) return;
+    const stack = discoverStackRef.current;
+    const profiles = allProfilesRef.current;
+    const seen = new Set<string>();
+    const end = Math.min(stack.length, currentIndex + DISCOVER_COVER_PREFETCH_CAP);
+    for (let i = currentIndex; i < end; i++) {
+      const u = discoverEntryCoverDisplayUri(stack[i], profiles);
+      if (u && !seen.has(u)) {
+        seen.add(u);
+        void Image.prefetch(u, 'memory-disk');
+      }
+    }
+  }, [stackIdentityKey, currentIndex]);
 
   /** Prefetch more discover rows before the user runs out (bounded Firestore pages). */
   useEffect(() => {

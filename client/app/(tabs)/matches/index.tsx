@@ -2,7 +2,8 @@ import { useFocusEffect } from '@react-navigation/native';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { router } from 'expo-router';
 import React, { useCallback, useMemo, useState } from 'react';
-import { Alert, FlatList, Image, ListRenderItem, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import { Alert, FlatList, ListRenderItem, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import { ProfileRemoteImage } from '@/components/ProfileRemoteImage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text as ThemedText, View as ThemedView } from '@/components/Themed';
 import { useColorScheme } from '@/components/useColorScheme';
@@ -99,7 +100,7 @@ export default function MatchesScreen() {
         onPress={() => openChat(item)}
       >
         {firstMedia?.uri && firstMedia.type === 'image' ? (
-          <Image source={{ uri: firstMedia.uri }} style={styles.avatar} />
+          <ProfileRemoteImage media={firstMedia} style={styles.avatar} contentFit="cover" />
         ) : (
           <View style={[styles.avatarPlaceholder, { backgroundColor: colors.tint + '22' }]}>
             <FontAwesome name="user" size={24} color={colors.tint} />

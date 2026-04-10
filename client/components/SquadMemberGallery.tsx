@@ -1,6 +1,7 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import React, { useMemo } from 'react';
-import { Image, Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { ProfileRemoteImage } from '@/components/ProfileRemoteImage';
 import { Text as ThemedText } from '@/components/Themed';
 import { SPACING, FONT_SIZE, FONT_WEIGHT, RADIUS } from '@/constants/Theme';
 import type { StunterProfile, UserStuntGroup } from '@/types';
@@ -8,9 +9,8 @@ import { MAX_SQUAD_MEMBERS } from '@/lib/squad';
 
 const SLOT = 92;
 
-function avatarUri(p: StunterProfile | null): string | undefined {
-  const m = p?.media?.find((x) => x.type === 'image');
-  return m?.uri;
+function firstImageMedia(p: StunterProfile | null) {
+  return p?.media?.find((x) => x.type === 'image') ?? null;
 }
 
 function initials(name: string): string {
@@ -59,7 +59,7 @@ export function SquadMemberGallery({ group, colors, resolveProfile, onInvitePres
       {slots.map((slot, index) => {
         if (slot.kind === 'member') {
           const p = resolveProfile(slot.profileId);
-          const uri = avatarUri(p);
+          const imageMedia = firstImageMedia(p);
           const label =
             p?.displayName ?? (slot.profileId === group.creatorId ? 'Creator' : 'Member');
           const isCreator = slot.profileId === group.creatorId;
@@ -72,8 +72,13 @@ export function SquadMemberGallery({ group, colors, resolveProfile, onInvitePres
               accessibilityLabel={`${displayLabel}${isCreator ? ', creator' : ''}`}
             >
               <View style={[styles.avatarRing, { borderColor: colors.border }]}>
-                {uri ? (
-                  <Image source={{ uri }} style={styles.avatarImg} accessibilityIgnoresInvertColors />
+                {imageMedia ? (
+                  <ProfileRemoteImage
+                    media={imageMedia}
+                    style={styles.avatarImg}
+                    contentFit="cover"
+                    accessibilityIgnoresInvertColors
+                  />
                 ) : (
                   <View style={[styles.avatarFallback, { backgroundColor: colors.border + '55' }]}>
                     <ThemedText style={[styles.initials, { color: colors.text }]}>{initials(label)}</ThemedText>

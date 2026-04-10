@@ -3,7 +3,6 @@ import { router, useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   FlatList,
-  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -12,6 +11,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { ProfileRemoteImage } from '@/components/ProfileRemoteImage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ReportModal } from '@/components/ReportModal';
 import { Text as ThemedText, View as ThemedView } from '@/components/Themed';
@@ -105,7 +105,7 @@ export default function MatchChatScreen() {
           accessibilityLabel={`View ${profile.displayName}'s profile`}
         >
           {firstMedia?.uri && firstMedia.type === 'image' ? (
-            <Image source={{ uri: firstMedia.uri }} style={styles.headerAvatar} />
+            <ProfileRemoteImage media={firstMedia} style={styles.headerAvatar} contentFit="cover" />
           ) : (
             <View style={[styles.headerAvatarPh, { backgroundColor: colors.tint + '22' }]}>
               <FontAwesome name="user" size={18} color={colors.tint} />

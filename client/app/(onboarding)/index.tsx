@@ -2,7 +2,8 @@ import FontAwesome from '@expo/vector-icons/FontAwesome';
 import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Image, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { ProfileRemoteImage } from '@/components/ProfileRemoteImage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BirthdayPickerField } from '@/components/BirthdayPickerField';
 import { LocationSearchField } from '@/components/LocationSearchField';
@@ -382,7 +383,12 @@ export default function OnboardingScreen() {
           {draft.media.map((m, index) => (
             <View key={m.id} style={styles.onboardingPhotoCell}>
               <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
-                <Image source={{ uri: m.uri }} style={styles.onboardingPhotoThumb} accessibilityLabel="Profile photo" />
+                <ProfileRemoteImage
+                  media={m}
+                  style={styles.onboardingPhotoThumb}
+                  contentFit="cover"
+                  accessibilityLabel="Profile photo"
+                />
               </View>
               <Pressable
                 style={styles.onboardingRemoveBtn}

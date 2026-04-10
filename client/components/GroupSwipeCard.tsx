@@ -1,12 +1,13 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { LinearGradient } from 'expo-linear-gradient';
 import React from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { ProfileRemoteImage } from '@/components/ProfileRemoteImage';
 import { POSITION_LABELS } from '@/constants/positions';
 import { DISCOVER_CARD_OVERLAY_BOTTOM_PAD } from '@/constants/discover';
 import { DISCOVER_GROUP_MAX_PHOTO_SLOTS, GROUP_MEMBER_MAX } from '@/constants/groups';
 import { SPACING, FONT_SIZE, FONT_WEIGHT, RADIUS } from '@/constants/Theme';
-import { maxPhotoSlotForMembers, uriForPhotoSlot } from '@/lib/groupRoster';
+import { maxPhotoSlotForMembers, profileImages } from '@/lib/groupRoster';
 import type { StuntGroup, StunterProfile } from '@/types';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
@@ -21,16 +22,21 @@ interface GroupSwipeCardProps {
 }
 
 function QuadPhoto({ profile, slot }: { profile: StunterProfile; slot: number }) {
-  const uri = uriForPhotoSlot(profile, slot);
-  return (
-    <View style={StyleSheet.absoluteFillObject}>
-      {uri ? (
-        <Image source={{ uri }} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
-      ) : (
+  const imgs = profileImages(profile);
+  if (imgs.length === 0) {
+    return (
+      <View style={StyleSheet.absoluteFillObject}>
         <View style={[styles.quadFallback, StyleSheet.absoluteFillObject]}>
           <FontAwesome name="user" size={36} color="rgba(255,255,255,0.35)" />
         </View>
-      )}
+      </View>
+    );
+  }
+  const idx = Math.min(Math.max(0, slot), imgs.length - 1);
+  const media = imgs[idx];
+  return (
+    <View style={StyleSheet.absoluteFillObject}>
+      <ProfileRemoteImage media={media} style={StyleSheet.absoluteFillObject} contentFit="cover" />
     </View>
   );
 }

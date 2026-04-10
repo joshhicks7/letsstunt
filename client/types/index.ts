@@ -47,6 +47,19 @@ export type GroupSkillTags =
 
 export type SkillTag = CoedSkillTags | GroupSkillTags;
 
+/** Profile gallery item (images may include an optional migrated CDN URL). */
+export interface ProfileMediaItem {
+  id: string;
+  uri: string;
+  type: 'image' | 'video';
+  /** Original Storage object path when known (migration script / server). */
+  path?: string;
+  /** WebP variant Storage path (see migration script). */
+  optimizedPath?: string;
+  /** Optional WebP / resized download URL — `getProfileImageDisplayUri` prefers this; UI falls back to `uri` on load error. */
+  optimizedUri?: string;
+}
+
 export interface StunterProfile {
   id: string;
   /** Email for auth only */
@@ -69,7 +82,7 @@ export interface StunterProfile {
   currentlyWorkingOn: string;
   instagramHandle: string | null;
   /** Images/gifs of them stunting (URIs) */
-  media: { id: string; uri: string; type: 'image' | 'video' }[];
+  media: ProfileMediaItem[];
   /** Location for nearby matching */
   location: {
     city?: string;
@@ -157,7 +170,7 @@ export interface OnboardingDraft {
   secondaryRoles: PositionType[];
   skillLevel: SkillLevel;
   yearsExperience: number;
-  media: { id: string; uri: string; type: 'image' | 'video' }[];
+  media: ProfileMediaItem[];
   location: StunterProfile['location'];
   teamGym: string | null;
   bio: string;

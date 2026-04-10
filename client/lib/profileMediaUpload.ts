@@ -1,8 +1,9 @@
+import * as ImageManipulator from 'expo-image-manipulator';
 import * as FileSystem from 'expo-file-system';
 import { getDownloadURL, ref, uploadBytes, uploadString } from 'firebase/storage';
 import { Platform } from 'react-native';
 import { getFirebaseStorage } from '@/lib/firebaseApp';
-import type { StunterProfile } from '@/types';
+import type { ProfileMediaItem, StunterProfile } from '@/types';
 
 const MAX_IMAGE_BYTES = 12 * 1024 * 1024;
 
@@ -10,20 +11,28 @@ export function isRemoteProfileMediaUri(uri: string): boolean {
   return /^https?:\/\//i.test(uri.trim());
 }
 
-function extFromContentType(contentType: string): string {
-  if (contentType.includes('png')) return 'png';
-  if (contentType.includes('webp')) return 'webp';
-  if (contentType.includes('gif')) return 'gif';
-  return 'jpg';
+function mediaItemWithoutOptimized(item: ProfileMediaItem): Pick<ProfileMediaItem, 'id' | 'uri' | 'type'> {
+  return { id: item.id, uri: item.uri, type: item.type };
+}
+
+/** Resize (max width 800), encode WebP q~0.7 — matches migration-style “optimized” asset. */
+async function compressToProfileWebp(localUri: string): Promise<string> {
+  const result = await ImageManipulator.manipulateAsync(
+    localUri,
+    [{ resize: { width: 800 } }],
+    {
+      compress: 0.7,
+      format: ImageManipulator.SaveFormat.WEBP,
+    },
+  );
+  return result.uri;
 }
 
 /**
- * Upload a single profile image from a local picker URI (or pass through if already a download URL).
+ * Upload a single profile image: local picks are compressed to WebP and only that file is stored
+ * at `users/{uid}/profile/{id}.webp`. Remote `https` URLs are returned unchanged.
  */
-export async function uploadProfileMediaItem(
-  uid: string,
-  item: { id: string; uri: string; type: 'image' | 'video' },
-): Promise<{ id: string; uri: string; type: 'image' | 'video' }> {
+export async function uploadProfileMediaItem(uid: string, item: ProfileMediaItem): Promise<ProfileMediaItem> {
   if (item.type !== 'image') {
     throw new Error('Only image uploads are supported.');
   }
@@ -31,7 +40,9 @@ export async function uploadProfileMediaItem(
     return item;
   }
 
+  const base = mediaItemWithoutOptimized(item);
   const storage = getFirebaseStorage();
+  const webpRef = ref(storage, `users/${uid}/profile/${base.id}.webp`);
 
   if (Platform.OS === 'web') {
     const res = await fetch(item.uri);
@@ -42,20 +53,18 @@ export async function uploadProfileMediaItem(
     if (blob.size > MAX_IMAGE_BYTES) {
       throw new Error('Image is too large. Choose a smaller photo.');
     }
-    const contentType = (() => {
-      const h = res.headers.get('content-type');
-      if (h && h.startsWith('image/')) return h;
-      if (blob.type && blob.type.startsWith('image/')) return blob.type;
-      return 'image/jpeg';
-    })();
-    const ext = extFromContentType(contentType);
-    const objectRef = ref(storage, `users/${uid}/profile/${item.id}.${ext}`);
-    await uploadBytes(objectRef, blob, { contentType });
-    const url = await getDownloadURL(objectRef);
-    return { ...item, uri: url };
+    const webpLocalUri = await compressToProfileWebp(item.uri);
+    const webpRes = await fetch(webpLocalUri);
+    if (!webpRes.ok) {
+      throw new Error('Could not prepare the image for upload.');
+    }
+    const webpBlob = await webpRes.blob();
+    await uploadBytes(webpRef, webpBlob, { contentType: 'image/webp' });
+    const url = await getDownloadURL(webpRef);
+    return { ...base, uri: url, path: webpRef.fullPath };
   }
 
-  const info = await FileSystem.getInfoAsync(item.uri);
+  const info = await FileSystem.getInfoAsync(base.uri);
   if (!info.exists) {
     throw new Error('Could not read the selected image.');
   }
@@ -63,14 +72,16 @@ export async function uploadProfileMediaItem(
     throw new Error('Image is too large. Choose a smaller photo.');
   }
 
-  const lower = item.uri.toLowerCase();
-  const contentType = lower.includes('.png') ? 'image/png' : 'image/jpeg';
-  const ext = extFromContentType(contentType);
-  const objectRef = ref(storage, `users/${uid}/profile/${item.id}.${ext}`);
-  const base64 = await FileSystem.readAsStringAsync(item.uri, { encoding: 'base64' });
-  await uploadString(objectRef, base64, 'base64', { contentType });
-  const url = await getDownloadURL(objectRef);
-  return { ...item, uri: url };
+  const webpLocalUri = await compressToProfileWebp(base.uri);
+  const webpInfo = await FileSystem.getInfoAsync(webpLocalUri);
+  if (!webpInfo.exists) {
+    throw new Error('Could not prepare the image for upload.');
+  }
+
+  const base64 = await FileSystem.readAsStringAsync(webpLocalUri, { encoding: 'base64' });
+  await uploadString(webpRef, base64, 'base64', { contentType: 'image/webp' });
+  const url = await getDownloadURL(webpRef);
+  return { ...base, uri: url, path: webpRef.fullPath };
 }
 
 /** Upload any local profile images; keep remote URLs as-is. Preserves order. */

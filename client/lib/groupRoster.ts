@@ -1,7 +1,8 @@
 import { GROUP_MEMBER_MAX } from '@/constants/groups';
-import type { StuntGroup, StunterProfile } from '@/types';
+import { getProfileImageDisplayUri } from '@/lib/profileMediaDisplay';
+import type { ProfileMediaItem, StuntGroup, StunterProfile } from '@/types';
 
-export function profileImages(p: StunterProfile) {
+export function profileImages(p: StunterProfile): ProfileMediaItem[] {
   return p.media.filter((m) => m.type === 'image');
 }
 
@@ -10,7 +11,7 @@ export function uriForPhotoSlot(p: StunterProfile, slot: number): string | null 
   const imgs = profileImages(p);
   if (imgs.length === 0) return null;
   const idx = Math.min(Math.max(0, slot), imgs.length - 1);
-  return imgs[idx].uri;
+  return getProfileImageDisplayUri(imgs[idx]);
 }
 
 export function maxPhotoSlotForMembers(members: StunterProfile[]): number {

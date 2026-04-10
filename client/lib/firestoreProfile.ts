@@ -3,6 +3,7 @@ import { roundGeoCoordinate } from '@/lib/geoPrecision';
 import type {
   AvailabilityType,
   PositionType,
+  ProfileMediaItem,
   SkillLevel,
   StunterProfile,
   SkillTag,
@@ -22,6 +23,12 @@ function isAvailability(v: unknown): v is AvailabilityType {
   return (
     v === 'weekdays' || v === 'weekends' || v === 'events' || v === 'competitions'
   );
+}
+
+function optionalTrimmedString(v: unknown): string | undefined {
+  if (typeof v !== 'string') return undefined;
+  const t = v.trim();
+  return t.length > 0 ? t : undefined;
 }
 
 export function serializeProfile(profile: StunterProfile): Record<string, unknown> {
@@ -67,11 +74,16 @@ export function profileFromFirestore(
       const o = m as Record<string, unknown>;
       if (typeof o.id !== 'string' || typeof o.uri !== 'string') return null;
       const type = o.type === 'video' ? 'video' : 'image';
-      return { id: o.id, uri: o.uri, type };
+      const item: ProfileMediaItem = { id: o.id, uri: o.uri, type };
+      const path = optionalTrimmedString(o.path);
+      const optimizedPath = optionalTrimmedString(o.optimizedPath);
+      const optimizedUri = optionalTrimmedString(o.optimizedUri);
+      if (path) item.path = path;
+      if (optimizedPath) item.optimizedPath = optimizedPath;
+      if (optimizedUri) item.optimizedUri = optimizedUri;
+      return item;
     })
-    .filter(
-      (x): x is { id: string; uri: string; type: 'image' | 'video' } => x != null,
-    );
+    .filter((x): x is ProfileMediaItem => x != null);
 
   let location: StunterProfile['location'] = null;
   if (p.location && typeof p.location === 'object') {

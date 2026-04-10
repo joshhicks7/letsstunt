@@ -1,13 +1,17 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
+import { Image } from 'expo-image';
 import React from 'react';
-import { Image, Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { ProfileRemoteImage } from '@/components/ProfileRemoteImage';
 import Colors from '@/constants/Colors';
 import { SPACING } from '@/constants/Theme';
+import { getProfileImageDisplayUri } from '@/lib/profileMediaDisplay';
+import type { ProfileMediaItem } from '@/types';
 
 type Props = {
   /** When this identity changes, carousel resets to first photo */
   mediaOwnerKey?: string;
-  imageMedia: { id: string; uri: string }[];
+  imageMedia: ProfileMediaItem[];
   /**
    * Legacy: used when not filling a parent (detail screens). Ignored for multi-photo navigation
    * (tap halves only); kept so call sites don’t need churn.
@@ -44,6 +48,11 @@ export function ProfileCoverCarousel({
   const onPageChangeRef = React.useRef(onPageChange);
   onPageChangeRef.current = onPageChange;
 
+  const displayUris = React.useMemo(
+    () => imageMedia.map((m) => getProfileImageDisplayUri(m)),
+    [imageMedia],
+  );
+
   const iconSize = placeholderIconSize ?? Math.min(72, Math.round(height * 0.32));
   const [page, setPage] = React.useState(0);
   const mediaKey = `${mediaOwnerKey ?? ''}|${imageMedia.map((m) => m.id).join('|')}`;
@@ -64,7 +73,20 @@ export function ProfileCoverCarousel({
     setPage((i) => (n <= 1 ? 0 : (i + 1) % n));
   }, [n]);
 
-  const current = n > 0 ? imageMedia[page] : null;
+  const currentMedia = n > 0 ? imageMedia[page] : null;
+
+  /** Light prefetch of prev/next slide display URIs for smoother taps. */
+  React.useEffect(() => {
+    if (n <= 1) return;
+    const urls = new Set<string>();
+    const addAt = (idx: number) => {
+      const u = displayUris[idx];
+      if (u) urls.add(u);
+    };
+    addAt((page - 1 + n) % n);
+    addAt((page + 1) % n);
+    urls.forEach((u) => void Image.prefetch(u, 'memory-disk'));
+  }, [page, n, displayUris, mediaKey]);
 
   const wrapStyle: StyleProp<ViewStyle> = fillContainer
     ? [styles.coverFill, style]
@@ -89,15 +111,25 @@ export function ProfileCoverCarousel({
   if (n === 1) {
     return (
       <View style={wrapStyle}>
-        <Image source={{ uri: imageMedia[0].uri }} style={fillContainer ? styles.coverImageFill : styles.coverImage} resizeMode="cover" />
+        <ProfileRemoteImage
+          media={imageMedia[0]}
+          style={fillContainer ? styles.coverImageFill : styles.coverImage}
+          contentFit="cover"
+          transition={200}
+        />
       </View>
     );
   }
 
   return (
     <View style={wrapStyle}>
-      {current?.uri ? (
-        <Image source={{ uri: current.uri }} style={fillContainer ? styles.coverImageFill : styles.coverImage} resizeMode="cover" />
+      {currentMedia ? (
+        <ProfileRemoteImage
+          media={currentMedia}
+          style={fillContainer ? styles.coverImageFill : styles.coverImage}
+          contentFit="cover"
+          transition={200}
+        />
       ) : null}
 
       <View style={styles.tapZones}>
