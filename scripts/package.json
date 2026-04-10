@@ -1,0 +1,18 @@
+{
+  "name": "letsstunt-migration-scripts",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "migrate-images": "npx tsx migrate-images-to-webp.ts",
+    "migrate-images:limit": "npx tsx migrate-images-to-webp.ts --limit=20"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.1",
+    "firebase-admin": "^13.0.2",
+    "sharp": "^0.33.5"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2",
+    "typescript": "^5.9.2"
+  }
+}
